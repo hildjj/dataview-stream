@@ -48,5 +48,5 @@ dvs.u32(); // 0x01020304
 ```
 
 ---
-[![Build Status](https://github.com/hildjj/dataview-stream/workflows/Tests/badge.svg)](https://github.com/hildjj/dataview-stream/actions?query=workflow%3ATests)
-[![codecov](https://codecov.io/gh/hildjj/dataview-stream/branch/main/graph/badge.svg?token=N7B7YLIDM4)](https://codecov.io/gh/hildjj/dataview-stream)
+[![Tests](https://github.com/hildjj/dataview-stream/actions/workflows/node.js.yml/badge.svg)](https://github.com/hildjj/dataview-stream/actions/workflows/node.js.yml)
+[![codecov](https://codecov.io/gh/hildjj/dataview-stream/graph/badge.svg?token=ZC97U0AI06)](https://codecov.io/gh/hildjj/dataview-stream)
