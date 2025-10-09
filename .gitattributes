@@ -1,0 +1,17 @@
+*.js text eol=lf
+*.cjs text eol=lf
+*.mjs text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.peggy text eol=lf
+*.pegjs text eol=lf
+*.peg.js text eol=lf
+*.json text eol=lf
+*.html text eol=lf
+*.css text eol=lf
+*.map text eol=lf
+*.png binary
+*.jpg binary
+*.ico binary
+*.pdf binary
+docs/* binary
