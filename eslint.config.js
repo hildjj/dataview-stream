@@ -17,4 +17,11 @@ export default [
   ...json,
   ...jts,
   ...markdown,
+  {
+    files: ['**/*.ts'],
+    rules: {
+      'n/file-extension-in-import': 'off',
+      '@typescript-eslint/parameter-properties': 'off',
+    },
+  },
 ];

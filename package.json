@@ -1,5 +1,5 @@
 {
-  "name": "dataviewstream",
+  "name": "dataview-stream",
   "version": "0.0.0",
   "decription": "",
   "main": "lib/index.js",
@@ -12,39 +12,33 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/hildjj/dataviewstream.git"
+    "url": "git+https://github.com/hildjj/dataview-stream.git"
   },
-  "homepage": "https://github.com/hildjj/dataviewstream#readme",
+  "homepage": "https://github.com/hildjj/dataview-stream#readme",
   "bugs": {
-    "url": "https://github.com/hildjj/dataviewstream/issues"
+    "url": "https://github.com/hildjj/dataview-stream/issues"
   },
   "scripts": {
     "clean": "rm -rf coverage docs lib",
     "lint": "eslint .",
-    "pretest": "tsup --sourcemap inline",
-    "test": "c8 node --test",
-    "posttest": "tsup --silent",
+    "test": "vitest --run",
     "docs": "typedoc",
     "ts": "tsup",
-    "build": "npm run test && npm run lint && npm run docs && npm pack --dry-run"
+    "build": "npm run ts && npm run test && npm run lint && npm run docs && npm pack --dry-run"
   },
   "devDependencies": {
     "@cto.af/eslint-config": "6.0.15",
     "@eslint/markdown": "7.4.0",
-    "c8": "10.1.3",
+    "@vitest/coverage-v8": "3.2.4",
     "eslint": "9.37.0",
     "eslint-plugin-jsdoc": "61.0.1",
     "tsup": "8.5.0",
     "typedoc": "0.28.13",
     "typescript": "5.9.3",
-    "typescript-eslint": "8.46.0"
+    "typescript-eslint": "8.46.0",
+    "vitest": "3.2.4"
   },
   "packageManager": "pnpm@10.18.1",
-  "pnpm": {
-    "ignoredBuiltDependencies": [
-      "esbuild"
-    ]
-  },
   "engines": {
     "node": ">=20"
   }

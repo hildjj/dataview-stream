@@ -7,8 +7,8 @@ module.exports = {
   out: 'docs',
   cleanOutputDir: true,
   sidebarLinks: {
-    GitHub: 'https://github.com/hildjj/dataviewstream/',
-    Documentation: 'http://hildjj.github.io/dataviewstream/',
+    GitHub: 'https://github.com/hildjj/dataview-stream/',
+    Documentation: 'http://hildjj.github.io/dataview-stream/',
   },
   navigation: {
     includeCategories: false,

@@ -7,7 +7,7 @@ export default defineConfig({
     'src/index.ts',
   ],
   format: 'esm',
-  minify: true,
+  minify: false,
   outDir: 'lib',
   sourcemap: false,
   splitting: false,
