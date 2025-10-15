@@ -24,4 +24,10 @@ export default [
       '@typescript-eslint/parameter-properties': 'off',
     },
   },
+  {
+    files: ['test/**/*.ts'],
+    rules: {
+      '@stylistic/array-element-newline': 'off',
+    },
+  },
 ];
