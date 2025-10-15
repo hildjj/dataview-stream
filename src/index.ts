@@ -1,8 +1,8 @@
 export type {Inspect, InspectOptions, Style} from './inspect.ts';
 export {
   DataViewReader,
-  ReaderOptions,
-  RequiredRederOptions,
+  type ReaderOptions,
+  type RequiredRederOptions,
 } from './reader.ts';
 export {
   DataViewWriter,

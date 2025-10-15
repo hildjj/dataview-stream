@@ -1,4 +1,4 @@
-import {defineConfig} from 'tsup';
+import {defineConfig} from 'tsdown';
 
 export default defineConfig({
   clean: true,
@@ -6,12 +6,15 @@ export default defineConfig({
   entry: [
     'src/index.ts',
     'src/reader.ts',
+    'src/writer.ts',
   ],
   format: 'esm',
-  minify: false,
+  minify: {
+    mangle: false,
+  },
   outDir: 'lib',
   sourcemap: false,
-  splitting: false,
+  splitting: true,
   target: 'es2022',
-  bundle: true,
+  bundle: false,
 });
