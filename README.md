@@ -36,15 +36,19 @@ the end of the input.
 Example:
 
 ```js
-import {DataViewStream} from 'dataview-stream';
+import {DataViewReader, DataViewWriter} from 'dataview-stream';
 
 const buf = new Uint8Array([1, 2, 3, 4]);
-const dvs = new DataViewStream(buf);
+const dvs = new DataViewReader(buf);
 
 dvs.u8(); // 0x01
 dvs.u16(); // 0x0203
 dvs.reset(); // Go back to the beginning
 dvs.u32(); // 0x01020304
+
+const dvw = new DataViewWriter();
+dvw.u8(1).u16(0x0203);
+dvw.read(); // Returns new Uint8([0x01, 0x02, 0x03])
 ```
 
 ---
