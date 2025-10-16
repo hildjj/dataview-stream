@@ -9,6 +9,7 @@ export default [
   {
     ignores: [
       'lib/**',
+      'README.md/*.ts',
     ],
   },
   ...es6,
