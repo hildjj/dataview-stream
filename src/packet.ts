@@ -1,5 +1,9 @@
 import {DataViewReader, type FieldType} from './reader.ts';
 
+export {
+  DataViewReader,
+};
+
 export type {
   FieldType,
 };
@@ -16,6 +20,34 @@ export interface BigStartFinish {
 
 export type StartFinish = NumStartFinish | BigStartFinish;
 
+export interface ReadOpts<F extends FieldType> {
+  /**
+   * If true, write to temp instead of packet.
+   */
+  temp?: boolean;
+
+  /**
+   * If specified, run the results through the given function before storing.
+   *
+   * @param value Original read value.
+   * @param name The field being stored to.  May be ignored.
+   * @param temp Is the field being stored to in temp rather than packet?
+   * @returns Converted value.
+   */
+  convert?(value: F, name: string, temp: boolean): unknown;
+}
+
+export type NotTemp<F extends FieldType> = Omit<ReadOpts<F>, 'temp'> & {temp?: false};
+export type HasTemp<F extends FieldType> = ReadOpts<F> & {temp: true};
+
+/**
+ * Capture fields from a packet in a way that allows accessing the previously-
+ * read fields while reading subsequent fields.
+ *
+ * @template T Structure of the packet.
+ * @template U Structure for other temporary fields that you want to reference,
+ *   but don't want in the final packet.
+ */
 export class Packet<T extends object, U = object> {
   #packet: Partial<T> = {};
   #temp: Partial<U> = {};
@@ -25,14 +57,31 @@ export class Packet<T extends object, U = object> {
     this.#r = reader;
   }
 
+  /**
+   * Packet.  Only the fields that you have already read may be accessed.
+   *
+   * @returns Possibly-incomplete packet, even though the type is complete.
+   */
   public get packet(): T {
     return this.#packet as T;
   }
 
+  /**
+   * Temporary storage.  Only the fields that you have already read may be
+   * accessed.
+   *
+   * @returns Possibly-incomplete temp data, even though the type is complete.
+   */
   public get temp(): U {
     return this.#temp as U;
   }
 
+  /**
+   * Reset all packet data, temp data, and return reader to the start.
+   * Mostly useful for testing.
+   *
+   * @returns This, for chaining.
+   */
   public reset(): this {
     this.#r.reset();
     this.#packet = {};
@@ -40,154 +89,318 @@ export class Packet<T extends object, U = object> {
     return this;
   }
 
+  /**
+   * Assert that all of the data been read.  Throws an exception if extra
+   * data.
+   *
+   * @returns This, for chaining.
+   */
   public complete(): this {
     this.#r.complete();
     return this;
   }
 
-  public unused(name: keyof T): this;
-  public unused(name: keyof U, temp: true): this;
-  public unused(name: keyof T | keyof U, temp = false): this {
-    return this.#store(name, this.#r.unused(), temp);
+  /**
+   * Store all of the data that has yet to be read.
+   *
+   * @param name Field to write to in packet or temp.
+   * @param opts Read options.
+   * @returns This, for chaining.
+   */
+  public unused(name: keyof T, opts?: NotTemp<Uint8Array>): this;
+  public unused(name: keyof U, opts: HasTemp<Uint8Array>): this;
+  public unused(
+    name: keyof T | keyof U,
+    opts: ReadOpts<Uint8Array> = {temp: false}
+  ): this {
+    return this.#store(name, this.#r.unused(), opts);
   }
 
-  public bytes(name: keyof T, len: number): this;
-  public bytes(name: keyof U, len: number, temp: true): this;
-  public bytes(name: keyof T | keyof U, len: number, temp = false): this {
-    return this.#store(name, this.#r.bytes(len), temp);
+  /**
+   * Store some number of bytes.
+   *
+   * @param name Field to write to in packet or temp.
+   * @param len Number of bytes to read.
+   * @param opts Read options.
+   * @returns This, for chaining.
+   */
+  public bytes(name: keyof T, len: number, opts?: NotTemp<Uint8Array>): this;
+  public bytes(name: keyof U, len: number, opts: HasTemp<Uint8Array>): this;
+  public bytes(
+    name: keyof T | keyof U,
+    len: number,
+    opts: ReadOpts<Uint8Array> = {temp: false}
+  ): this {
+    return this.#store(name, this.#r.bytes(len), opts);
   }
 
-  public ascii(name: keyof T, len: number): this;
-  public ascii(name: keyof U, len: number, temp: true): this;
-  public ascii(name: keyof T | keyof U, len: number, temp = false): this {
-    return this.#store(name, this.#r.ascii(len), temp);
+  /**
+   * Store some number of bytes, interpreted as an ASCII string.
+   *
+   * @param name Field to write to in packet or temp.
+   * @param len Number of bytes to read.
+   * @param opts Read options.
+   * @returns This, for chaining.
+   */
+  public ascii(
+    name: keyof T,
+    len: number,
+    opts?: NotTemp<string>
+  ): this;
+  public ascii(
+    name: keyof U,
+    len: number,
+    opts: HasTemp<string>
+  ): this;
+  public ascii(
+    name: keyof T | keyof U,
+    len: number,
+    opts: ReadOpts<string> = {temp: false}
+  ): this {
+    return this.#store(name, this.#r.ascii(len), opts);
   }
 
-  public utf8(name: keyof T, len: number): this;
-  public utf8(name: keyof U, len: number, temp: true): this;
-  public utf8(name: keyof T | keyof U, len: number, temp = false): this {
-    return this.#store(name, this.#r.utf8(len), temp);
+  /**
+   * Store some number of bytes, interpreted as a UTF8 string.
+   *
+   * @param name Field to write to in packet or temp.
+   * @param len Number of bytes to read.
+   * @param opts Read options.
+   * @returns This, for chaining.
+   */
+  public utf8(name: keyof T, len: number, opts?: NotTemp<string>): this;
+  public utf8(
+    name: keyof U,
+    len: number,
+    opts: HasTemp<string>
+  ): this;
+  public utf8(
+    name: keyof T | keyof U,
+    len: number,
+    opts: ReadOpts<string> = {temp: false}
+  ): this {
+    return this.#store(name, this.#r.utf8(len), opts);
   }
 
-  public u8(name: keyof T): this;
-  public u8(name: keyof U, temp: true): this;
-  public u8(name: keyof T | keyof U, temp = false): this {
-    return this.#store(name, this.#r.u8(), temp);
+  /**
+   * Store an unsigned 8 bit integer.
+   *
+   * @param name Field to write to in packet or temp.
+   * @param opts Read options.
+   * @returns This, for chaining.
+   */
+  public u8(name: keyof T, opts?: NotTemp<number>): this;
+  public u8(name: keyof U, opts: HasTemp<number>): this;
+  public u8(
+    name: keyof T | keyof U,
+    opts: ReadOpts<number> = {temp: false}
+  ): this {
+    return this.#store(name, this.#r.u8(), opts);
   }
 
-  public u16(name: keyof T): this;
-  public u16(name: keyof U, temp: true): this;
-  public u16(name: keyof T | keyof U, temp = false): this {
-    return this.#store(name, this.#r.u16(), temp);
+  /**
+   * Store an unsigned 16 bit integer.
+   *
+   * @param name Field to write to in packet or temp.
+   * @param opts Read options.
+   * @returns This, for chaining.
+   */
+  public u16(name: keyof T, opts?: NotTemp<number>): this;
+  public u16(name: keyof U, opts: HasTemp<number>): this;
+  public u16(
+    name: keyof T | keyof U,
+    opts: ReadOpts<number> = {temp: false}
+  ): this {
+    return this.#store(name, this.#r.u16(), opts);
   }
 
-  public u32(name: keyof T): this;
-  public u32(name: keyof U, temp: true): this;
-  public u32(name: keyof T | keyof U, temp = false): this {
-    return this.#store(name, this.#r.u32(), temp);
+  /**
+   * Store an unsigned 32 bit integer.
+   *
+   * @param name Field to write to in packet or temp.
+   * @param opts Read options.
+   * @returns This, for chaining.
+   */
+  public u32(name: keyof T, opts?: NotTemp<number>): this;
+  public u32(name: keyof U, opts: HasTemp<number>): this;
+  public u32(
+    name: keyof T | keyof U,
+    opts: ReadOpts<number> = {temp: false}
+  ): this {
+    return this.#store(name, this.#r.u32(), opts);
   }
 
-  public u64(name: keyof T): this;
-  public u64(name: keyof U, temp: true): this;
-  public u64(name: keyof T | keyof U, temp = false): this {
-    return this.#store(name, this.#r.u64(), temp);
+  /**
+   * Store an unsigned 64 bit integer as a bigint.
+   *
+   * @param name Field to write to in packet or temp.
+   * @param opts Read options.
+   * @returns This, for chaining.
+   */
+  public u64(name: keyof T, opts?: NotTemp<bigint>): this;
+  public u64(name: keyof U, opts: HasTemp<bigint>): this;
+  public u64(
+    name: keyof T | keyof U,
+    opts: ReadOpts<bigint> = {temp: false}
+  ): this {
+    return this.#store(name, this.#r.u64(), opts);
   }
 
-  public i8(name: keyof T): this;
-  public i8(name: keyof U, temp: true): this;
-  public i8(name: keyof T | keyof U, temp = false): this {
-    return this.#store(name, this.#r.i8(), temp);
+  /**
+   * Store a signed 8 bit integer.
+   *
+   * @param name Field to write to in packet or temp.
+   * @param opts Read options.
+   * @returns This, for chaining.
+   */
+  public i8(name: keyof T, opts?: NotTemp<number>): this;
+  public i8(name: keyof U, opts: HasTemp<number>): this;
+  public i8(
+    name: keyof T | keyof U,
+    opts: ReadOpts<number> = {temp: false}
+  ): this {
+    return this.#store(name, this.#r.i8(), opts);
   }
 
-  public i16(name: keyof T): this;
-  public i16(name: keyof U, temp: true): this;
-  public i16(name: keyof T | keyof U, temp = false): this {
-    return this.#store(name, this.#r.i16(), temp);
+  /**
+   * Store a signed 16 bit integer.
+   *
+   * @param name Field to write to in packet or temp.
+   * @param opts Read options.
+   * @returns This, for chaining.
+   */
+  public i16(name: keyof T, opts?: NotTemp<number>): this;
+  public i16(name: keyof U, opts: HasTemp<number>): this;
+  public i16(
+    name: keyof T | keyof U,
+    opts: ReadOpts<number> = {temp: false}
+  ): this {
+    return this.#store(name, this.#r.i16(), opts);
   }
 
-  public i32(name: keyof T): this;
-  public i32(name: keyof U, temp: true): this;
-  public i32(name: keyof T | keyof U, temp = false): this {
-    return this.#store(name, this.#r.i32(), temp);
+  /**
+   * Store a signed 32 bit integer.
+   *
+   * @param name Field to write to in packet or temp.
+   * @param opts Read options.
+   * @returns This, for chaining.
+   */
+  public i32(name: keyof T, opts?: NotTemp<number>): this;
+  public i32(name: keyof U, opts: HasTemp<number>): this;
+  public i32(
+    name: keyof T | keyof U,
+    opts: ReadOpts<number> = {temp: false}
+  ): this {
+    return this.#store(name, this.#r.i32(), opts);
   }
 
-  public i64(name: keyof T): this;
-  public i64(name: keyof U, temp: true): this;
-  public i64(name: keyof T | keyof U, temp = false): this {
-    return this.#store(name, this.#r.i64(), temp);
+  /**
+   * Store a signed 64 bit integer as a bigint.
+   *
+   * @param name Field to write to in packet or temp.
+   * @param opts Read options.
+   * @returns This, for chaining.
+   */
+  public i64(name: keyof T, opts?: NotTemp<bigint>): this;
+  public i64(name: keyof U, opts: HasTemp<bigint>): this;
+  public i64(
+    name: keyof T | keyof U,
+    opts: ReadOpts<bigint> = {temp: false}
+  ): this {
+    return this.#store(name, this.#r.i64(), opts);
   }
 
-  public f16(name: keyof T): this;
-  public f16(name: keyof U, temp: true): this;
-  public f16(name: keyof T | keyof U, temp = false): this {
-    return this.#store(name, this.#r.f16(), temp);
+  /**
+   * Store a 16 bit float.
+   *
+   * @param name Field to write to in packet or temp.
+   * @param opts Read options.
+   * @returns This, for chaining.
+   */
+  public f16(name: keyof T, opts?: NotTemp<number>): this;
+  public f16(name: keyof U, opts: HasTemp<number>): this;
+  public f16(
+    name: keyof T | keyof U,
+    opts: ReadOpts<number> = {temp: false}
+  ): this {
+    return this.#store(name, this.#r.f16(), opts);
   }
 
-  public f32(name: keyof T): this;
-  public f32(name: keyof U, temp: true): this;
-  public f32(name: keyof T | keyof U, temp = false): this {
-    return this.#store(name, this.#r.f32(), temp);
+  /**
+   * Store a 32 bit float.
+   *
+   * @param name Field to write to in packet or temp.
+   * @param opts Read options.
+   * @returns This, for chaining.
+   */
+  public f32(name: keyof T, opts?: NotTemp<number>): this;
+  public f32(name: keyof U, opts: HasTemp<number>): this;
+  public f32(
+    name: keyof T | keyof U,
+    opts: ReadOpts<number> = {temp: false}
+  ): this {
+    return this.#store(name, this.#r.f32(), opts);
   }
 
-  public f64(name: keyof T): this;
-  public f64(name: keyof U, temp: true): this;
-  public f64(name: keyof T | keyof U, temp = false): this {
-    return this.#store(name, this.#r.f64(), temp);
+  /**
+   * Store a 64 bit float.
+   *
+   * @param name Field to write to in packet or temp.
+   * @param opts Read options.
+   * @returns This, for chaining.
+   */
+  public f64(name: keyof T, opts?: NotTemp<number>): this;
+  public f64(name: keyof U, opts: HasTemp<number>): this;
+  public f64(
+    name: keyof T | keyof U,
+    opts: ReadOpts<number> = {temp: false}
+  ): this {
+    return this.#store(name, this.#r.f64(), opts);
   }
 
+  /**
+   * Convenience function to repeat reading a given number of times.
+   *
+   * @param name Packet field name to read into, as an array.
+   * @param num Number of times to call fn.
+   * @param fn Function that reads.
+   * @param opts Read options.
+   * @returns This, for chaining.
+   */
   public times(
     name: keyof T,
     num: number,
-    fn: (n: number) => FieldType
+    fn: (n: number) => FieldType,
+    opts?: NotTemp<FieldType[]>
   ): this;
   public times(
     name: keyof U,
     num: number,
     fn: (n: number) => FieldType,
-    temp: true
+    opts: HasTemp<FieldType[]>
   ): this;
-
-  /**
-   * Convenience function to repeat reading a given number of times.
-   *
-   * @param name Packet field name to read into.
-   * @param num Number of times to call fn.
-   * @param fn Function that reads.
-   * @param temp Store in temp instead of packet?
-   * @returns Array of results.
-   */
   public times(
     name: keyof T | keyof U,
     num: number,
     fn: (n: number) => FieldType,
-    temp = false
+    opts: ReadOpts<FieldType[]> = {temp: false}
   ): this {
-    return this.#store(name, this.#r.times(num, fn), temp);
+    return this.#store(name, this.#r.times(num, fn), opts);
   }
 
+  /**
+   * Convenience function to perhaps execute a read.
+   *
+   * @param doIt Should fn be executed?
+   * @param fn Run if doIt is true.
+   * @returns This, for chaining.
+   */
   public maybe(doIt: boolean, fn: () => void): this {
     if (doIt) {
       fn.call(this);
     }
     return this;
   }
-
-  public bits(desc: {
-    from: keyof T;
-    to: keyof T;
-  } & StartFinish): this;
-  public bits(desc: {
-    fromTemp: keyof U;
-    to: keyof T;
-  } & StartFinish): this;
-  public bits(desc: {
-    from: keyof T;
-    toTemp: keyof U;
-  } & StartFinish): this;
-  public bits(desc: {
-    fromTemp: keyof U;
-    toTemp: keyof U;
-  } & StartFinish): this;
 
   /**
    * Copy some of the bits from one existing field to another.  Does
@@ -196,23 +409,36 @@ export class Packet<T extends object, U = object> {
    * applied to unsigned from fields.  Bits are numbered with 0 on the
    * right, MSB on the left.  Start and finish can be in either order.
    *
-   * @param desc Description of bits to copy.
-   * @param desc.from Source field name.
-   * @param desc.fromTemp Source field name, from temp storage.
-   * @param desc.to Destination field name.
-   * @param desc.toTemp Destination field name, from temp storage.
-   * @param desc.start Start of bit range.
-   * @param desc.finish End of bit range, defaults to start.
-   * @returns This, for chaining.
-   * @throws {TypeError} If the from field isn't a number.
+   * @param desc Description of bits to capture.
    */
+  public bits(desc: {
+    from: keyof T;
+    to: keyof T;
+    convert?(value: number | boolean, name: string): void;
+  } & StartFinish): this;
+  public bits(desc: {
+    fromTemp: keyof U;
+    to: keyof T;
+    convert?(value: number | boolean, name: string): void;
+  } & StartFinish): this;
+  public bits(desc: {
+    from: keyof T;
+    toTemp: keyof U;
+    convert?(value: number | boolean, name: string): void;
+  } & StartFinish): this;
+  public bits(desc: {
+    fromTemp: keyof U;
+    toTemp: keyof U;
+    convert?(value: number | boolean, name: string): void;
+  } & StartFinish): this;
   public bits(
-    {from, to, fromTemp, toTemp, start, finish}:
+    {from, to, fromTemp, toTemp, start, finish, convert}:
     {
       from: keyof T;
       fromTemp: keyof U;
       to: keyof T;
       toTemp: keyof U;
+      convert?(value: number | boolean, name: string): void;
     } & StartFinish
   ): this {
     const field = (fromTemp ? this.#temp[fromTemp] : this.#packet[from]) as
@@ -236,19 +462,26 @@ export class Packet<T extends object, U = object> {
     return this.#store(
       toTemp ?? to,
       (start === finish) ? Boolean(tmp) : tmp,
-      Boolean(toTemp)
+      {
+        temp: Boolean(toTemp),
+        convert,
+      }
     );
   }
 
-  #store(
+  #store<V extends FieldType>(
     name: keyof T | keyof U,
-    value: FieldType,
-    temp: boolean
+    value: V,
+    opts: ReadOpts<V>
   ): this {
-    if (temp) {
-      this.#temp[name as keyof U] = value as U[keyof U];
+    let res: unknown = value;
+    if (opts.convert) {
+      res = opts.convert(value, name as string, opts.temp ?? false);
+    }
+    if (opts.temp) {
+      this.#temp[name as keyof U] = res as U[keyof U];
     } else {
-      this.#packet[name as keyof T] = value as T[keyof T];
+      this.#packet[name as keyof T] = res as T[keyof T];
     }
     return this;
   }

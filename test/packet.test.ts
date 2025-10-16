@@ -33,7 +33,7 @@ describe('Packet', () => {
       .u16('bop')
       .bits({from: 'bop', to: 'blort', start: 8, finish: 9})
       .bytes('bytes', 1)
-      .u8('len', true)
+      .u8('len', {temp: true, convert: i => i})
       .bits({fromTemp: 'len', toTemp: 'bits', start: 0, finish: 1})
       .ascii('ascii', p.temp.len)
       .maybe(false, () => p.utf8('utf8', 1))
@@ -58,10 +58,10 @@ describe('Packet', () => {
     assert.equal(p.packet.u64, 0x0102030403616263n);
     assert.equal(p.packet.foo, 1);
     p.reset()
-      .i8('foo')
+      .i8('foo', {convert: i => i << 2})
       .i16('bop');
     assert.deepEqual(p.packet as object, {
-      foo: 1,
+      foo: 4,
       bop: 0x0203,
     });
     assert.equal(p.reset().i32('foo').packet.foo, 0x01020304);
