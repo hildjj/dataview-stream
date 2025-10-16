@@ -3,6 +3,7 @@ import {DataViewReader} from '../src/reader.ts';
 import {Packet} from '../src/packet.ts';
 
 interface Foo {
+  type: 'foo';
   foo: number;
   bar: boolean;
   bop: number;
@@ -29,6 +30,7 @@ describe('Packet', () => {
     ]));
     const p = new Packet<Foo, Temp>(r);
     p.u8('foo')
+      .constant('type', 'foo')
       .bits({from: 'foo', to: 'bar', start: 0})
       .u16('bop')
       .bits({from: 'bop', to: 'blort', start: 8, finish: 9})
@@ -41,6 +43,7 @@ describe('Packet', () => {
       .unused('baz')
       .complete();
     assert.deepEqual(p.packet, {
+      type: 'foo',
       foo: 1,
       bar: true,
       bop: 0x0203,
