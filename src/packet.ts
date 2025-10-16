@@ -469,6 +469,31 @@ export class Packet<T extends object, U = object> {
     );
   }
 
+  /**
+   * Store a constant to the packet.
+   *
+   * @param name Field to write to in packet or temp.
+   * @param val Any constant value.
+   * @param opts Read options.
+   */
+  public constant(
+    name: keyof T,
+    val: FieldType,
+    opts?: NotTemp<FieldType>
+  ): this;
+  public constant(
+    name: keyof U,
+    val: FieldType,
+    opts: HasTemp<FieldType>
+  ): this;
+  public constant(
+    name: keyof T | keyof U,
+    val: FieldType,
+    opts: ReadOpts<FieldType> = {temp: false}
+  ): this {
+    return this.#store(name, val, opts);
+  }
+
   #store<V extends FieldType>(
     name: keyof T | keyof U,
     value: V,
