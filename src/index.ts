@@ -13,7 +13,10 @@ export {
 } from './writer.ts';
 export {
   type BigStartFinish,
+  type HasTemp,
+  type NotTemp,
   type NumStartFinish,
   Packet,
+  type ReadOpts,
   type StartFinish,
 } from './packet.ts';

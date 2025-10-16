@@ -67,7 +67,7 @@ interface Temp {
 }
 
 const pkt = new Packet<Foo, Temp>(dvs);
-pkt.u8('foo').u8('bar', true).bytes(pkt.temp.bar)
+pkt.u8('foo').u8('bar', {temp: true}).bytes(pkt.temp.bar)
 console.log(pkt.packet); // {foo: 1, last: new Uint8Array([0x03, 0x04])}
 console.log(pkt.temp); // {bar: 2}
 ```
