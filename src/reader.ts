@@ -1,6 +1,9 @@
 import {CUSTOM_INSPECT, type Inspect, type InspectOptions, u8toHex} from './inspect.ts';
 import {parseHalf} from './half.ts';
 
+export type FieldType =
+  number | bigint | string | boolean | Uint8Array | FieldType[];
+
 /**
  * The input was truncated, compared to the expected size.
  * In other words, an attempt was made to read past the end of the input.
@@ -316,6 +319,21 @@ export class DataViewReader {
     const start = this.#offset;
     this.#check(4);
     return this.#dv.getFloat64(start, this.#little);
+  }
+
+  /**
+   * Convenience function to repeat reading a given number of times.
+   *
+   * @param num Number of times to call fn.
+   * @param fn Function that reads.
+   * @returns Array of results.
+   */
+  public times<T extends FieldType>(num: number, fn: (n: number) => T): T[] {
+    const res: T[] = [];
+    for (let i = 0; i < num; i++) {
+      res[i] = fn.call(this, i);
+    }
+    return res;
   }
 
   /**

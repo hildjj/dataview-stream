@@ -35,8 +35,8 @@ the end of the input.
 
 Example:
 
-```js
-import {DataViewReader, DataViewWriter} from 'dataview-stream';
+```ts
+import {DataViewReader, DataViewWriter, Packet} from 'dataview-stream';
 
 const buf = new Uint8Array([1, 2, 3, 4]);
 const dvs = new DataViewReader(buf);
@@ -49,6 +49,27 @@ dvs.u32(); // 0x01020304
 const dvw = new DataViewWriter();
 dvw.u8(1).u16(0x0203);
 dvw.read(); // Returns new Uint8([0x01, 0x02, 0x03])
+
+/**
+ * @typedef {object} Foo
+ * @property {number} bar
+ */
+
+dvs.reset();
+
+interface Foo {
+  foo: number;
+  last: Uint8Array;
+}
+
+interface Temp {
+  bar: number;
+}
+
+const pkt = new Packet<Foo, Temp>(dvs);
+pkt.u8('foo').u8('bar', true).bytes(pkt.temp.bar)
+console.log(pkt.packet); // {foo: 1, last: new Uint8Array([0x03, 0x04])}
+console.log(pkt.temp); // {bar: 2}
 ```
 
 ---

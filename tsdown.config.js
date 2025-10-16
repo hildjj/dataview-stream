@@ -7,6 +7,7 @@ export default defineConfig({
     'src/index.ts',
     'src/reader.ts',
     'src/writer.ts',
+    'src/packet.ts',
   ],
   format: 'esm',
   minify: {
@@ -16,5 +17,5 @@ export default defineConfig({
   sourcemap: false,
   splitting: true,
   target: 'es2022',
-  bundle: false,
+  unbundle: true,
 });
