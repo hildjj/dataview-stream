@@ -22,6 +22,13 @@ export default [
     rules: {
       'n/file-extension-in-import': 'off',
       '@typescript-eslint/parameter-properties': 'off',
+      '@stylistic/max-len': ['error', 80, {
+        ignorePattern: '^\\s*\\/\\/ eslint-',
+        ignoreRegExpLiterals: true,
+        ignoreStrings: true,
+        ignoreTemplateLiterals: true,
+        ignoreUrls: true,
+      }],
     },
   },
   {
