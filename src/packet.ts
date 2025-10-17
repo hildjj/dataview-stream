@@ -20,7 +20,7 @@ export interface BigStartFinish {
 
 export type StartFinish = NumStartFinish | BigStartFinish;
 
-export interface ReadOpts<F extends FieldType> {
+export interface ReadOpts<F = FieldType> {
   /**
    * If true, write to temp instead of packet.
    */
@@ -37,8 +37,8 @@ export interface ReadOpts<F extends FieldType> {
   convert?(value: F, name: string, temp: boolean): unknown;
 }
 
-export type NotTemp<F extends FieldType> = Omit<ReadOpts<F>, 'temp'> & {temp?: false};
-export type HasTemp<F extends FieldType> = ReadOpts<F> & {temp: true};
+export type NotTemp<F> = Omit<ReadOpts<F>, 'temp'> & {temp?: false};
+export type HasTemp<F> = ReadOpts<F> & {temp: true};
 
 /**
  * Capture fields from a packet in a way that allows accessing the previously-
@@ -64,6 +64,24 @@ export class Packet<T extends object, U = object> {
    */
   public get packet(): T {
     return this.#packet as T;
+  }
+
+  /**
+   * The current offset into the reader.
+   *
+   * @type {number}
+   */
+  public get offset(): number {
+    return this.#r.offset;
+  }
+
+  /**
+   * How many bytes are left to be read?
+   *
+   * @type {number}
+   */
+  public get left(): number {
+    return this.#r.original.length - this.#r.offset;
   }
 
   /**
@@ -403,6 +421,40 @@ export class Packet<T extends object, U = object> {
   }
 
   /**
+   * Repeat the given read until a condition fails.
+   *
+   * @param name Packet field name to read into, as an array.
+   * @param keepGoing While this function returns true, keep calling read.
+   * @param read The value returned from this function is added to the array.
+   * @param opts Read options.
+   */
+  public while<V>(
+    name: keyof T,
+    keepGoing: (iteration: number, r: DataViewReader) => boolean,
+    read: (iteration: number, r: DataViewReader) => V,
+    opts?: NotTemp<V[]>
+  ): this;
+  public while<V>(
+    name: keyof U,
+    keepGoing: (iteration: number, r: DataViewReader) => boolean,
+    read: (iteration: number, r: DataViewReader) => V,
+    opts: HasTemp<V[]>
+  ): this;
+  public while<V>(
+    name: keyof T | keyof U,
+    keepGoing: (iteration: number, r: DataViewReader) => boolean,
+    read: (iteration: number, r: DataViewReader) => V,
+    opts: ReadOpts<V[]> = {temp: false}
+  ): this {
+    const res: V[] = [];
+    let it = 0;
+    while (keepGoing.call(this, it, this.#r)) {
+      res.push(read.call(this, it++, this.#r));
+    }
+    return this.#store(name, res, opts);
+  }
+
+  /**
    * Copy some of the bits from one existing field to another.  Does
    * not work for fields larger than 53 bits.  For fields larger than
    * 32 bits, use bigints, as returned from u64().  Should only be
@@ -494,7 +546,7 @@ export class Packet<T extends object, U = object> {
     return this.#store(name, val, opts);
   }
 
-  #store<V extends FieldType>(
+  #store<V>(
     name: keyof T | keyof U,
     value: V,
     opts: ReadOpts<V>
