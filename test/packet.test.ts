@@ -76,4 +76,16 @@ describe('Packet', () => {
       0x01, 0x02, 0x03, 0x04,
     ]);
   });
+
+  interface While {
+    while: number[];
+  }
+
+  test('while', () => {
+    const r = new DataViewReader(new Uint8Array([0x61, 0x62]));
+    const p = new Packet<While>(r);
+    p.while('while', () => p.left > 0, (_i, rd) => rd.u8());
+    assert.deepEqual(p.packet, {while: [0x61, 0x62]});
+    assert.equal(p.offset, 2);
+  });
 });
