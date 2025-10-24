@@ -364,9 +364,9 @@ export class DataViewWriter {
       return options.stylize('[DataViewWriter]', 'special');
     }
 
-    const count = this.#chunks.length;
+    const last = this.#chunks.length - 1;
     const bufStr = this.#chunks.map((c, i) => {
-      if (i === count - 1) {
+      if (i === last) {
         c = c.subarray(0, this.#offset);
       }
       return options.stylize(u8toHex(c), 'string');

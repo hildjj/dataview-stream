@@ -14,11 +14,15 @@ interface Foo {
   baz: Uint8Array;
   u64?: bigint;
   times?: number[];
+  flagSet?: Set<string>;
+  bigFlagSet?: Set<string>;
 }
 
 interface Temp {
   len: number;
   bits: number;
+  flags: number;
+  bigFlags: bigint;
 }
 
 describe('Packet', () => {
@@ -75,6 +79,16 @@ describe('Packet', () => {
     assert.deepEqual(p.reset().times('times', 4, () => r.u8()).packet.times, [
       0x01, 0x02, 0x03, 0x04,
     ]);
+    p.reset()
+      .u64('bigFlags', {temp: true})
+      .u8('flags', {temp: true})
+      .bits({fromTemp: 'bigFlags', to: 'bigFlagSet', set: {FOO: 2n, BAR: 1n, BAZ: 0n}})
+      .bits({fromTemp: 'flags', to: 'flagSet', set: {FOO: 2, BAR: 1}});
+
+    assert.deepEqual(p.packet as object, {
+      bigFlagSet: new Set(['BAR', 'BAZ']),
+      flagSet: new Set(['FOO']),
+    });
   });
 
   interface While {

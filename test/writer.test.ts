@@ -164,6 +164,7 @@ test('writer custom inspector', () => {
   const w = new DataViewWriter({chunkSize: 8});
   w.u8(12);
   w.utf8('abc');
+  w.ascii('1234567890');
 
   // Go through some gyrations so we don't have to include node:util.
   const opts: InspectOptions = {
@@ -176,13 +177,15 @@ test('writer custom inspector', () => {
     return String(a); // Not ideal, returns [object Object] for chunks
   }
 
-  assert.equal(w[CUSTOM_INSPECT](1, opts, inspect), `DataViewWriter { length: 4, chunks: [
+  assert.equal(w[CUSTOM_INSPECT](1, opts, inspect), `DataViewWriter { length: 14, chunks: [
   0x0c616263
+  0x31323334353637383930
 ] }`);
   assert.equal(w[CUSTOM_INSPECT](-1, opts, inspect), '[DataViewWriter]');
 
   delete opts.depth;
-  assert.equal(w[CUSTOM_INSPECT](1, opts, inspect), `DataViewWriter { length: 4, chunks: [
+  assert.equal(w[CUSTOM_INSPECT](1, opts, inspect), `DataViewWriter { length: 14, chunks: [
   0x0c616263
+  0x31323334353637383930
 ] }`);
 });
