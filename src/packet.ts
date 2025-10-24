@@ -18,7 +18,24 @@ export interface BigStartFinish {
   finish?: bigint;
 }
 
-export type StartFinish = NumStartFinish | BigStartFinish;
+export interface FlagSet {
+  set: {[flag: string]: number};
+}
+
+export interface BigFlagSet {
+  set: {[flag: string]: bigint};
+}
+
+export type StartFinish = NumStartFinish |
+  BigStartFinish |
+  FlagSet |
+  BigFlagSet;
+
+export interface SimpleBitsConfig {
+  convert?(value: number | boolean, name: string): void;
+}
+
+export type BitsConfig = SimpleBitsConfig & StartFinish;
 
 export interface ReadOpts<F = FieldType> {
   /**
@@ -466,54 +483,64 @@ export class Packet<T extends object, U = object> {
   public bits(desc: {
     from: keyof T;
     to: keyof T;
-    convert?(value: number | boolean, name: string): void;
-  } & StartFinish): this;
+  } & BitsConfig): this;
   public bits(desc: {
     fromTemp: keyof U;
     to: keyof T;
-    convert?(value: number | boolean, name: string): void;
-  } & StartFinish): this;
+  } & BitsConfig): this;
   public bits(desc: {
     from: keyof T;
     toTemp: keyof U;
-    convert?(value: number | boolean, name: string): void;
-  } & StartFinish): this;
+  } & BitsConfig): this;
   public bits(desc: {
     fromTemp: keyof U;
     toTemp: keyof U;
-    convert?(value: number | boolean, name: string): void;
-  } & StartFinish): this;
+  } & BitsConfig): this;
   public bits(
-    {from, to, fromTemp, toTemp, start, finish, convert}:
+    {from, to, fromTemp, toTemp, convert, ...startFinish}:
     {
       from: keyof T;
       fromTemp: keyof U;
       to: keyof T;
       toTemp: keyof U;
-      convert?(value: number | boolean, name: string): void;
-    } & StartFinish
+    } & BitsConfig
   ): this {
     const field = (fromTemp ? this.#temp[fromTemp] : this.#packet[from]) as
       number | bigint;
-    finish ??= start;
     const one = (typeof field === 'bigint' ? 1n : 1) as typeof field;
 
-    // Start is the higher number.
-    if (finish > start) {
-      [start, finish] = [finish, start];
+    let val: boolean | number | bigint | Set<string> | undefined = undefined;
+
+    if ('set' in startFinish) {
+      val = new Set<string>();
+      for (const [flag, start] of Object.entries(startFinish.set)) {
+        // @ts-expect-error TS blows at generic maths.
+        if ((field >> start) & one) {
+          val.add(flag);
+        }
+      }
+    } else {
+      let {start, finish} = startFinish;
+      finish ??= start;
+
+      // Start is the higher number.
+      if (finish > start) {
+        [start, finish] = [finish, start];
+      }
+
+      // @ts-expect-error TS blows at generic maths.
+      const diff = (start - finish + one) as typeof field;
+
+      // Always extract 53 bits or fewer.
+      // @ts-expect-error TS blows at generic maths.
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-conversion
+      const tmp = Number((field >> finish) & ((one << diff) - one));
+      val = (start === finish) ? Boolean(tmp) : tmp;
     }
-
-    // @ts-expect-error TS blows at generic maths.
-    const diff = (start - finish + one) as typeof field;
-
-    // Always extract 53 bits or fewer.
-    // @ts-expect-error TS blows at generic maths.
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-conversion
-    const tmp = Number((field >> finish) & ((one << diff) - one));
 
     return this.#store(
       toTemp ?? to,
-      (start === finish) ? Boolean(tmp) : tmp,
+      val,
       {
         temp: Boolean(toTemp),
         convert,
