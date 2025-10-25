@@ -120,6 +120,7 @@ describe('Packet', () => {
     p.bytes('baz', 64)
       .u8('foo')
       .bits({from: 'foo', to: 'flagSet', set: {FOO: 1}})
+      .enableTruncation() // No-op in this case
       .unused('bytes');
     assert.deepEqual(p.packet as object, {});
 

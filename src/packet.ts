@@ -170,6 +170,16 @@ export class Packet<T extends object, U = object> {
   }
 
   /**
+   * Turn on truncation for this stream.
+   *
+   * @returns This, for chaining.
+   */
+  public enableTruncation(): this {
+    this.allowTruncation = true;
+    return this;
+  }
+
+  /**
    * Store all of the data that has yet to be read.
    *
    * @param name Field to write to in packet or temp.
