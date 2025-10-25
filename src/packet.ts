@@ -112,6 +112,23 @@ export class Packet<T extends object, U = object> {
   }
 
   /**
+   * Is this underlying reader truncated?
+   *
+   * @returns True if truncated.
+   */
+  public get truncated(): boolean {
+    return this.#r.truncated;
+  }
+
+  /**
+   * Some higher-level processor has detected truncation.  Must not be set
+   * to false.
+   */
+  public set truncated(val: boolean) {
+    this.#r.truncated = val;
+  }
+
+  /**
    * Reset all packet data, temp data, and return reader to the start.
    * Mostly useful for testing.
    *
@@ -424,14 +441,15 @@ export class Packet<T extends object, U = object> {
   }
 
   /**
-   * Convenience function to perhaps execute a read.
+   * Convenience function to perhaps execute a read.  Does not call the
+   * function if input was truncated.
    *
    * @param doIt Should fn be executed?
    * @param fn Run if doIt is true.
    * @returns This, for chaining.
    */
   public maybe(doIt: boolean, fn: () => void): this {
-    if (doIt) {
+    if (!this.#r.truncated && doIt) {
       fn.call(this);
     }
     return this;
@@ -465,7 +483,7 @@ export class Packet<T extends object, U = object> {
   ): this {
     const res: V[] = [];
     let it = 0;
-    while (keepGoing.call(this, it, this.#r)) {
+    while (!this.#r.truncated && keepGoing.call(this, it, this.#r)) {
       res.push(read.call(this, it++, this.#r));
     }
     return this.#store(name, res, opts);
@@ -505,8 +523,10 @@ export class Packet<T extends object, U = object> {
       toTemp: keyof U;
     } & BitsConfig
   ): this {
-    const field = (fromTemp ? this.#temp[fromTemp] : this.#packet[from]) as
-      number | bigint;
+    const field = fromTemp ? this.#temp[fromTemp] : this.#packet[from];
+    if (this.#r.allowTruncation && (typeof field === 'undefined')) {
+      return this;
+    }
     const one = (typeof field === 'bigint' ? 1n : 1) as typeof field;
 
     let val: boolean | number | bigint | Set<string> | undefined = undefined;
@@ -578,14 +598,16 @@ export class Packet<T extends object, U = object> {
     value: V,
     opts: ReadOpts<V>
   ): this {
-    let res: unknown = value;
-    if (opts.convert) {
-      res = opts.convert(value, name as string, opts.temp ?? false);
-    }
-    if (opts.temp) {
-      this.#temp[name as keyof U] = res as U[keyof U];
-    } else {
-      this.#packet[name as keyof T] = res as T[keyof T];
+    if (!this.#r.truncated) {
+      let res: unknown = value;
+      if (opts.convert) {
+        res = opts.convert(value, name as string, opts.temp ?? false);
+      }
+      if (opts.temp) {
+        this.#temp[name as keyof U] = res as U[keyof U];
+      } else {
+        this.#packet[name as keyof T] = res as T[keyof T];
+      }
     }
     return this;
   }

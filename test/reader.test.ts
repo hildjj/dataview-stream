@@ -119,4 +119,34 @@ describe('reader', () => {
     const d = new DataViewReader(buf);
     assert.deepEqual(d.times(2, () => d.u16()), [0x6162, 0x6364]);
   });
+
+  test('truncation', () => {
+    const buf = new Uint8Array([
+      0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x67, 0x68,
+    ]);
+    const r = new DataViewReader(buf, {allowTruncation: true});
+    assert.deepEqual(r.bytes(9), new Uint8Array(0));
+    assert.deepEqual(r.u8(), NaN);
+    assert.deepEqual(r.u16(), NaN);
+    assert.deepEqual(r.u32(), NaN);
+    assert.deepEqual(r.u64(), -1n);
+    assert.deepEqual(r.i8(), NaN);
+    assert.deepEqual(r.i16(), NaN);
+    assert.deepEqual(r.i32(), NaN);
+    assert.deepEqual(r.i64(), DataViewReader.BAD_I64);
+    assert.deepEqual(r.f16(), NaN);
+    assert.deepEqual(r.f32(), NaN);
+    assert.deepEqual(r.f64(), NaN);
+    assert.deepEqual(r.times(4, () => r.u8()), []);
+    assert.doesNotThrow(() => r.complete());
+
+    assert.equal(r.allowTruncation, true);
+    assert.throws(() => r.seek(0), /Invalid seek/);
+    assert.throws(() => {
+      r.truncated = false;
+    });
+    assert.doesNotThrow(() => {
+      r.truncated = true;
+    });
+  });
 });

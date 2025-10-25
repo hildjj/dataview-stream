@@ -102,4 +102,25 @@ describe('Packet', () => {
     assert.deepEqual(p.packet, {while: [0x61, 0x62]});
     assert.equal(p.offset, 2);
   });
+
+  test('truncation', () => {
+    const r = new DataViewReader(new Uint8Array([
+      0x01, 0x02, 0x03, 0x04,
+      0x3, 0x61, 0x62, 0x63,
+      0x64,
+    ]), {
+      allowTruncation: true,
+    });
+    const p = new Packet<Foo, Temp>(r);
+    assert.equal(p.truncated, false);
+    assert.throws(() => {
+      p.truncated = false;
+    }, /What has be truncated may no longer be read/);
+
+    p.bytes('baz', 64)
+      .u8('foo')
+      .bits({from: 'foo', to: 'flagSet', set: {FOO: 1}})
+      .unused('bytes');
+    assert.deepEqual(p.packet as object, {});
+  });
 });

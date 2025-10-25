@@ -12,11 +12,15 @@ export {
   type WriterOptions,
 } from './writer.ts';
 export {
+  type BigFlagSet,
   type BigStartFinish,
+  type BitsConfig,
+  type FlagSet,
   type HasTemp,
   type NotTemp,
   type NumStartFinish,
   Packet,
   type ReadOpts,
+  type SimpleBitsConfig,
   type StartFinish,
 } from './packet.ts';
