@@ -148,5 +148,11 @@ describe('reader', () => {
     assert.doesNotThrow(() => {
       r.truncated = true;
     });
+    assert.throws(() => {
+      r.allowTruncation = false;
+    });
+    assert.doesNotThrow(() => {
+      r.allowTruncation = true;
+    });
   });
 });

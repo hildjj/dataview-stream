@@ -134,13 +134,22 @@ export class DataViewReader {
   }
 
   /**
-   * Is truncation allowed?  May not be changed during the lifetime of this
-   * object.
+   * Is truncation allowed?
    *
    * @returns Truncation allowed.
    */
   public get allowTruncation(): boolean {
     return this.#allowTruncation;
+  }
+
+  /**
+   * Set truncation mode.  May not turn it off, once it's on.
+   */
+  public set allowTruncation(val: boolean) {
+    if (!val) {
+      throw new Error('Cannot disable truncation mode');
+    }
+    this.#allowTruncation = true;
   }
 
   /**

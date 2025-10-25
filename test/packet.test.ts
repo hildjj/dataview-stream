@@ -122,5 +122,10 @@ describe('Packet', () => {
       .bits({from: 'foo', to: 'flagSet', set: {FOO: 1}})
       .unused('bytes');
     assert.deepEqual(p.packet as object, {});
+
+    assert.equal(p.allowTruncation, true);
+    assert.throws(() => {
+      p.allowTruncation = false;
+    });
   });
 });

@@ -112,6 +112,23 @@ export class Packet<T extends object, U = object> {
   }
 
   /**
+   * Get the truncation mode of the underlying reader.
+   *
+   * @returns True if truncation allowed.
+   */
+  public get allowTruncation(): boolean {
+    return this.#r.allowTruncation;
+  }
+
+  /**
+   * Sets the truncation mode of the underlying reader.  May not be set to
+   * false.
+   */
+  public set allowTruncation(val: boolean) {
+    this.#r.allowTruncation = val;
+  }
+
+  /**
    * Is this underlying reader truncated?
    *
    * @returns True if truncated.
