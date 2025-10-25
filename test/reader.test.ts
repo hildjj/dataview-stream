@@ -74,6 +74,9 @@ describe('reader', () => {
       d4.reset();
       assert.equal(d4.f16(), -Infinity);
     });
+    d.reset();
+    d.skip(1);
+    assert.equal(d.u8(), 0x62);
   });
 
   test('littleEndian', () => {

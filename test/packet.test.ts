@@ -89,6 +89,12 @@ describe('Packet', () => {
       bigFlagSet: new Set(['BAR', 'BAZ']),
       flagSet: new Set(['FOO']),
     });
+
+    p.reset()
+      .skip(1)
+      .u8('foo');
+    assert.equal(p.packet.foo, 2);
+    assert.throws(() => p.bytes('baz', 8));
   });
 
   interface While {
