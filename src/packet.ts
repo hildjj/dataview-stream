@@ -180,6 +180,17 @@ export class Packet<T extends object, U = object> {
   }
 
   /**
+   * Skip over some bytes in the stream.
+   *
+   * @param length Number of bytes to skip.
+   * @returns This, for chaining.
+   */
+  public skip(length: number): this {
+    this.#r.skip(length);
+    return this;
+  }
+
+  /**
    * Store all of the data that has yet to be read.
    *
    * @param name Field to write to in packet or temp.

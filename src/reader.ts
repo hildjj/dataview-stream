@@ -196,8 +196,23 @@ export class DataViewReader {
     this.#offset = 0; // Always valid.
   }
 
+  /**
+   * All of the bytes that have not been used yet.  If complete, returns
+   * an empty array.
+   *
+   * @returns Byte array.
+   */
   public unused(): Uint8Array {
     return this.#bytes.subarray(this.#offset);
+  }
+
+  /**
+   * Skip some number of bytes without manipulating them.
+   *
+   * @param length Number of bytes to skip.
+   */
+  public skip(length: number): void {
+    this.#check(length);
   }
 
   /**
