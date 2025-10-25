@@ -51,6 +51,9 @@ export interface ReaderOptions {
 
   /** If there is an error in UTF8 encoding, use the replacement character. */
   ignoreUTF8errors?: boolean;
+
+  /** If true, do not throw exception on truncation. */
+  allowTruncation?: boolean;
 }
 
 export type RequiredRederOptions = Required<ReaderOptions>;
@@ -64,18 +67,28 @@ const TDF = new TextDecoder('utf8', {ignoreBOM: false, fatal: true});
  * sense or the web sense.
  */
 export class DataViewReader {
-  public static defaultOptions: RequiredRederOptions = {
+  public static readonly defaultOptions: RequiredRederOptions = {
     offset: 0,
     littleEndian: false,
     ignoreUTF8errors: false,
+    allowTruncation: false,
   };
 
-  #offset = 0;
-  #little: boolean;
-  #dv: DataView;
+  /**
+   * Invalid value for reading a signed 64-bit integer.  This will allow
+   * all bitflags to still be zero while signalling the error.  Effectively
+   * NaN for 64-bit bigints.
+   */
+  public static readonly BAD_I64 = 1n << 64n;
+
+  #allowTruncation = false;
   #bytes: Uint8Array;
+  #dv: DataView;
   #len: number;
+  #little: boolean;
+  #offset = 0;
   #td = TDF;
+  #truncated = false;
 
   /**
    * Construct new stream.  Relatively lightweight, creating a new DataView
@@ -96,6 +109,7 @@ export class DataViewReader {
     this.#checkOffset(ropts.offset);
     this.#offset = ropts.offset;
     this.#little = ropts.littleEndian;
+    this.#allowTruncation = ropts.allowTruncation;
     if (ropts.ignoreUTF8errors) {
       this.#td = TD;
     }
@@ -120,11 +134,54 @@ export class DataViewReader {
   }
 
   /**
+   * Is truncation allowed?
+   *
+   * @returns Truncation allowed.
+   */
+  public get allowTruncation(): boolean {
+    return this.#allowTruncation;
+  }
+
+  /**
+   * Set truncation mode.  May not turn it off, once it's on.
+   */
+  public set allowTruncation(val: boolean) {
+    if (!val) {
+      throw new Error('Cannot disable truncation mode');
+    }
+    this.#allowTruncation = true;
+  }
+
+  /**
+   * If true, truncation is allowed, and this reader has detected truncation.
+   * @returns Truncation state.
+   */
+  public get truncated(): boolean {
+    return this.#truncated;
+  }
+
+  /**
+   * Allowed to be set from outside the class if some higher layer wants to
+   * stop all further reads.  May only be set to true.
+   */
+  public set truncated(val: boolean) {
+    if (!val) {
+      throw new Error('What has be truncated may no longer be read.');
+    }
+    this.#truncated = true;
+  }
+
+  /**
    * Go to a particular offset in the buffer.
    *
    * @param offset The new offset.
+   * @throws {Error} If truncation is allowed, since truncation state would be
+   *   lost.
    */
   public seek(offset = 0): void {
+    if (this.#allowTruncation) {
+      throw new Error('Invalid seek in a potentially-truncated buffer');
+    }
     this.#checkOffset(offset);
     this.#offset = offset;
   }
@@ -132,9 +189,11 @@ export class DataViewReader {
   /**
    * Reset to the beginning of the input.  Ignores the initial offset, so if
    * you want to restart at the same place, call seek(initialOffset).
+   * Sets the truncation state back to false.
    */
   public reset(): void {
-    this.seek(0);
+    this.#truncated = false;
+    this.#offset = 0; // Always valid.
   }
 
   public unused(): Uint8Array {
@@ -184,103 +243,123 @@ export class DataViewReader {
 
   /**
    * Get an unsigned byte.  Advances the current read position by 1 byte.
+   * Returns NaN if truncation is allowed and the packet was truncated.
    *
    * @returns Number.
    */
   public u8(): number {
     const start = this.#offset;
-    this.#check(1);
+    if (Number.isNaN(this.#check(1))) {
+      return NaN;
+    }
     return this.#dv.getUint8(start);
   }
 
   /**
    * Get a two-byte unsigned integer. Advances the current read position by 2
-   * bytes.
+   * bytes.  Returns NaN if truncation is allowed and the packet was truncated.
    *
    * @returns Number.
    */
   public u16(): number {
     const start = this.#offset;
-    this.#check(2);
+    if (Number.isNaN(this.#check(2))) {
+      return NaN;
+    }
     return this.#dv.getUint16(start, this.#little);
   }
 
   /**
    * Get a four-byte unsigned integer. Advances the current read position by 4
-   * bytes.
+   * bytes.  Returns NaN if truncation is allowed and the packet was truncated.
    *
    * @returns Number.
    */
 
   public u32(): number {
     const start = this.#offset;
-    this.#check(4);
+    if (Number.isNaN(this.#check(4))) {
+      return NaN;
+    }
     return this.#dv.getUint32(start, this.#little);
   }
 
   /**
    * Get an eight-byte unsigned integer. Advances the current read position by 8
-   * bytes.
+   * bytes.  Returns -1n if truncation is allowed and the packet was truncated.
    *
    * @returns Bigint, since 2**64 > 2**53.
    */
   public u64(): bigint {
     const start = this.#offset;
-    this.#check(8);
+    if (Number.isNaN(this.#check(8))) {
+      return -1n;
+    }
     return this.#dv.getBigUint64(start, this.#little);
   }
 
   /**
    * Get a signed byte.  Advances the current read position by 1 byte.
+   * Returns NaN if truncation is allowed and the packet was truncated.
    *
    * @returns Number.
    */
   public i8(): number {
     const start = this.#offset;
-    this.#check(1);
+    if (Number.isNaN(this.#check(1))) {
+      return NaN;
+    }
     return this.#dv.getInt8(start);
   }
 
   /**
    * Get a two-byte signed integer. Advances the current read position by 2
-   * bytes.
+   * bytes.  Returns NaN if truncation is allowed and the packet was truncated.
    *
    * @returns Number.
    */
   public i16(): number {
     const start = this.#offset;
-    this.#check(2);
+    if (Number.isNaN(this.#check(2))) {
+      return NaN;
+    }
     return this.#dv.getInt16(start, this.#little);
   }
 
   /**
    * Get a four-byte signed integer. Advances the current read position by 4
-   * bytes.
+   * bytes.  Returns NaN if truncation is allowed and the packet was truncated.
    *
    * @returns Number.
    */
   public i32(): number {
     const start = this.#offset;
-    this.#check(4);
+    if (Number.isNaN(this.#check(4))) {
+      return NaN;
+    }
     return this.#dv.getInt32(start, this.#little);
   }
 
   /**
    * Get a eight-byte signed integer. Advances the current read position by 8
-   * bytes.
+   * bytes.  Returns DataViewReader.BAD_I64 if truncation is allowed and the
+   * packet was truncated.
    *
    * @returns Bigint.
    */
 
   public i64(): bigint {
     const start = this.#offset;
-    this.#check(8);
+    if (Number.isNaN(this.#check(8))) {
+      return DataViewReader.BAD_I64;
+    }
     return this.#dv.getBigInt64(start, this.#little);
   }
 
   /**
-   * Get a half-precision floating point number.  On older JS runtimes, uses
-   * a local implementation of f16.
+   * Get a half-precision floating point number.  On older JS runtimes, uses a
+   * local implementation of f16.  Returns NaN if truncation is allowed and
+   * the packet was truncated.
    *
    * Advances the current read position by 2 bytes.
    *
@@ -288,7 +367,11 @@ export class DataViewReader {
    */
   public f16(): number {
     const start = this.#offset;
-    this.#check(2);
+    if (Number.isNaN(this.#check(2))) {
+      // This is not ideal for floats, since NaN is a valid thing to have
+      // read.
+      return NaN;
+    }
     if (this.#dv.getFloat16) {
       return this.#dv.getFloat16(start, this.#little);
     }
@@ -296,7 +379,8 @@ export class DataViewReader {
   }
 
   /**
-   * Get a single-precision floating point number.
+   * Get a single-precision floating point number.  Returns NaN if truncation
+   * is allowed and the packet was truncated.
    *
    * Advances the current read position by 4 bytes.
    *
@@ -304,12 +388,15 @@ export class DataViewReader {
    */
   public f32(): number {
     const start = this.#offset;
-    this.#check(4);
+    if (Number.isNaN(this.#check(4))) {
+      return NaN;
+    }
     return this.#dv.getFloat32(start, this.#little);
   }
 
   /**
-   * Get a double-precision floating point number.
+   * Get a double-precision floating point number.  Returns NaN if truncation
+   * is allowed and the packet was truncated.
    *
    * Advances the current read position by 8 bytes.
    *
@@ -317,7 +404,9 @@ export class DataViewReader {
    */
   public f64(): number {
     const start = this.#offset;
-    this.#check(4);
+    if (Number.isNaN(this.#check(4))) {
+      return NaN;
+    }
     return this.#dv.getFloat64(start, this.#little);
   }
 
@@ -330,7 +419,7 @@ export class DataViewReader {
    */
   public times<T extends FieldType>(num: number, fn: (n: number) => T): T[] {
     const res: T[] = [];
-    for (let i = 0; i < num; i++) {
+    for (let i = 0; !this.#truncated && (i < num); i++) {
       res[i] = fn.call(this, i);
     }
     return res;
@@ -338,11 +427,12 @@ export class DataViewReader {
 
   /**
    * If the current buffer has not been completely read, throws an error.
+   * Does not throw error if truncation is allowed.
    *
    * @throws {ExtraBytesError} When extra data.
    */
   public complete(): void {
-    if (this.#offset !== this.#len) {
+    if (!this.#truncated && (this.#offset !== this.#len)) {
       throw new ExtraBytesError(this.#offset, this.#len);
     }
   }
@@ -388,9 +478,16 @@ export class DataViewReader {
    * @throws {TruncationError} Invalid total number.
    */
   #check(add: number): number {
+    if (this.#truncated) {
+      return NaN;
+    }
     const start = this.#offset;
     this.#offset += add;
     if (this.#offset > this.#len) {
+      if (this.#allowTruncation) {
+        this.#truncated = true;
+        return NaN;
+      }
       throw new TruncationError(start, this.#offset, this.#len);
     }
     return this.#offset;
