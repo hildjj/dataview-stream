@@ -2,12 +2,12 @@
   "name": "dataview-stream",
   "version": "1.7.0",
   "decription": "",
-  "main": "lib/index.js",
+  "main": "lib/index.mjs",
   "exports": {
-    ".": "./lib/index.js",
-    "./reader": "./lib/reader.js",
-    "./writer": "./lib/writer.js",
-    "./packet": "./lib/packet.js"
+    ".": "./lib/index.mjs",
+    "./reader": "./lib/reader.mjs",
+    "./writer": "./lib/writer.mjs",
+    "./packet": "./lib/packet.mjs"
   },
   "files": [
     "lib/*"
@@ -33,18 +33,18 @@
     "build": "npm run ts && npm run test && npm run lint && npm run docs && npm pack --dry-run"
   },
   "devDependencies": {
-    "@cto.af/eslint-config": "6.0.17",
-    "@eslint/markdown": "7.5.0",
-    "@vitest/coverage-v8": "4.0.3",
-    "eslint": "9.38.0",
-    "eslint-plugin-jsdoc": "61.1.8",
-    "tsdown": "^0.15.9",
+    "@cto.af/eslint-config": "6.1.0",
+    "@eslint/markdown": "7.5.1",
+    "@vitest/coverage-v8": "4.0.8",
+    "eslint": "9.39.1",
+    "eslint-plugin-jsdoc": "61.1.12",
+    "tsdown": "^0.16.2",
     "typedoc": "0.28.14",
     "typescript": "5.9.3",
-    "typescript-eslint": "8.46.2",
-    "vitest": "4.0.3"
+    "typescript-eslint": "8.46.4",
+    "vitest": "4.0.8"
   },
-  "packageManager": "pnpm@10.19.0",
+  "packageManager": "pnpm@10.21.0",
   "engines": {
     "node": ">=20"
   }

@@ -7,7 +7,7 @@ import markdown from '@cto.af/eslint-config/markdown.js';
 import ts from '@cto.af/eslint-config/ts.js';
 
 // Figure out when and how to do this programmatically in @cto.af/eslint-config
-ts[0].settings.n.typescriptExtensionMap = [
+ts[1].settings.n.typescriptExtensionMap = [
   ['.js', '.js'],
   ['.ts', '.ts'],
 ];
