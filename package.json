@@ -1,6 +1,6 @@
 {
   "name": "dataview-stream",
-  "version": "1.7.0",
+  "version": "1.7.1",
   "decription": "",
   "main": "lib/index.mjs",
   "exports": {
