@@ -1,26 +1,47 @@
 export type {Inspect, InspectOptions, Style} from './inspect.ts';
 export {
+  type BytesReader as ArrayReader,
+  type BigIntReader,
+  type ConstantReader,
   DataViewReader,
   type FieldType,
+  type NumberReader,
+  type Reader,
   type ReaderOptions,
+  type ReaderType,
   type RequiredRederOptions,
+  SIZE,
+  type StringReader,
+  type Struct,
+  type StructDefinition,
+  type Temp,
 } from './reader.ts';
 export {
-  DataViewWriter,
+  DataViewReadableStream,
   isF16,
-  type RequiredWriterOptions,
-  type WriterOptions,
-} from './writer.ts';
+  type RequiredDataViewReadableStreamOptions,
+  type DataViewReadableStreamOptions,
+} from './readableStream.ts';
 export {
   type BigFlagSet,
   type BigStartFinish,
   type BitsConfig,
+  type ConvertReadOpts,
+  type EasyReadOpts,
   type FlagSet,
   type HasTemp,
+  type MatchingType,
   type NotTemp,
   type NumStartFinish,
   Packet,
   type ReadOpts,
   type SimpleBitsConfig,
-  type StartFinish,
 } from './packet.ts';
+export {
+  type DataViewWritableStreamOptions,
+  DataViewWritableStream,
+} from './writableStream.ts';
+export {
+  ExtraBytesError,
+  TruncationError,
+} from './errors.ts';

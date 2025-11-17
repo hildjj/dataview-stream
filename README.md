@@ -36,9 +36,9 @@ the end of the input.
 Example:
 
 ```ts
-import {DataViewReader, DataViewWriter, Packet} from 'dataview-stream';
+import {DataViewReader} from 'dataview-stream';
 
-const buf = new Uint8Array([1, 2, 3, 4]);
+const buf = new Uint8Array([1, 2, 3, 4, 5, 6]);
 const dvs = new DataViewReader(buf);
 
 dvs.u8(); // 0x01
@@ -46,30 +46,17 @@ dvs.u16(); // 0x0203
 dvs.reset(); // Go back to the beginning
 dvs.u32(); // 0x01020304
 
-const dvw = new DataViewWriter();
-dvw.u8(1).u16(0x0203);
-dvw.read(); // Returns new Uint8([0x01, 0x02, 0x03])
-
-/**
- * @typedef {object} Foo
- * @property {number} bar
- */
-
 dvs.reset();
 
-interface Foo {
-  foo: number;
-  last: Uint8Array;
-}
+dvs.struct({
+  foo: {read: 'u8'},
+  _bar: {read: 'u8', convert: v => v * 2}, // Not output because initial _
+  last: {read: 'bytes', length: temp => temp.bar as number}
+}); // {foo: 1, last: new Uint8Array([3, 4, 5, 6])}
 
-interface Temp {
-  bar: number;
-}
-
-const pkt = new Packet<Foo, Temp>(dvs);
-pkt.u8('foo').u8('bar', {temp: true}).bytes(pkt.temp.bar)
-console.log(pkt.packet); // {foo: 1, last: new Uint8Array([0x03, 0x04])}
-console.log(pkt.temp); // {bar: 2}
+const dvw = new DataViewReader();
+dvw.u8(1).u16(0x0203);
+dvw.getReader().read(); // Returns new Uint8([0x01, 0x02, 0x03])
 ```
 
 ---

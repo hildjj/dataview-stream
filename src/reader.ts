@@ -1,46 +1,10 @@
 import {CUSTOM_INSPECT, type Inspect, type InspectOptions, u8toHex} from './inspect.ts';
+import {ExtraBytesError, TruncationError} from './errors.ts';
+import type {Pretty} from '@cto.af/utils';
 import {parseHalf} from './half.ts';
 
 export type FieldType =
   number | bigint | string | boolean | Uint8Array | FieldType[];
-
-/**
- * The input was truncated, compared to the expected size.
- * In other words, an attempt was made to read past the end of the input.
- */
-export class TruncationError extends Error {
-  public readonly start: number;
-  public readonly requested: number;
-  public readonly size: number;
-
-  /**
-   * Create a truncation error.
-   *
-   * @param start The starting offset for the read.
-   * @param requested The number of bytes requested.
-   * @param size The total size of the input.
-   */
-  public constructor(start: number, requested: number, size: number) {
-    super(`Message truncated, ${requested} > ${size} at ${start}`);
-    this.start = start;
-    this.requested = requested;
-    this.size = size;
-  }
-}
-
-/**
- * The input was longer than expected.
- */
-export class ExtraBytesError extends Error {
-  public readonly offset: number;
-  public readonly size: number;
-
-  public constructor(offset: number, size: number) {
-    super(`Message overlong, ${size} > ${offset}`);
-    this.offset = offset;
-    this.size = size;
-  }
-}
 
 export interface ReaderOptions {
   /** Initial offset.  The reset() method will ignore this. */
@@ -57,6 +21,62 @@ export interface ReaderOptions {
 }
 
 export type RequiredRederOptions = Required<ReaderOptions>;
+
+export interface NumberReader<W> {
+  read: 'u8' | 'u16' | 'u32' |
+    'i8' | 'i16' | 'i32' |
+    'f16' | 'f32' | 'f64';
+  littleEndian?: boolean;
+  convert?(n: number, tmp: Temp, dvr: DataViewReader): W;
+}
+
+export interface BigIntReader<W> {
+  read: 'u64' | 'i64';
+  littleEndian?: boolean;
+  convert?(n: bigint, tmp: Temp, dvr: DataViewReader): W;
+}
+
+export interface StringReader<W> {
+  read: 'ascii' | 'utf8';
+  length(temp: Temp, dvr: DataViewReader): number;
+  convert?(n: string, tmp: Temp, dvr: DataViewReader): W;
+}
+
+export interface BytesReader<W> {
+  read: 'bytes';
+  length(tmp: Temp, dvr: DataViewReader): number;
+  convert?(n: Uint8Array, tmp: Temp, dvr: DataViewReader): W;
+}
+
+export interface ConstantReader<W> {
+  read: 'constant';
+  value(tmp: Temp, dvr: DataViewReader): W;
+}
+
+export type Reader<W> = NumberReader<W> | BigIntReader<W> |
+  StringReader<W> | BytesReader<W> | ConstantReader<W>;
+
+export type ReaderType<T> =
+  T extends {convert(n: any): infer W} ? W :
+    T extends ConstantReader<infer X> ? X :
+      T extends NumberReader<any> ? number :
+        T extends BigIntReader<any> ? bigint :
+          T extends StringReader<any> ? string :
+            T extends BytesReader<any> ? Uint8Array :
+              never;
+
+export interface Temp {
+  [K: string]: unknown;
+}
+
+export const SIZE: unique symbol = Symbol('struct.size');
+
+export type StructDefinition =
+  {[K: string]: Reader<unknown>} & {[SIZE]?: number};
+
+export type Struct<T> = Pretty<{
+  [K in keyof T as K extends `_${string}` ? never : K]: ReaderType<T[K]>;
+}>;
 
 const TD = new TextDecoder('utf8', {ignoreBOM: false});
 const TDF = new TextDecoder('utf8', {ignoreBOM: false, fatal: true});
@@ -115,6 +135,14 @@ export class DataViewReader {
     }
   }
 
+  public get littleEndian(): boolean {
+    return this.#little;
+  }
+
+  public set littleEndian(val: boolean) {
+    this.#little = val;
+  }
+
   /**
    * Original bytes.
    *
@@ -131,6 +159,14 @@ export class DataViewReader {
    */
   public get offset(): number {
     return this.#offset;
+  }
+
+  /**
+   * Have we read all the bytes yet?
+   * @returns True if finished.
+   */
+  public get finished(): boolean {
+    return this.#offset === this.#len;
   }
 
   /**
@@ -274,43 +310,46 @@ export class DataViewReader {
    * Get a two-byte unsigned integer. Advances the current read position by 2
    * bytes.  Returns NaN if truncation is allowed and the packet was truncated.
    *
+   * @param littleEndian Override stream's endianness.
    * @returns Number.
    */
-  public u16(): number {
+  public u16(littleEndian = this.#little): number {
     const start = this.#offset;
     if (Number.isNaN(this.#check(2))) {
       return NaN;
     }
-    return this.#dv.getUint16(start, this.#little);
+    return this.#dv.getUint16(start, littleEndian);
   }
 
   /**
    * Get a four-byte unsigned integer. Advances the current read position by 4
    * bytes.  Returns NaN if truncation is allowed and the packet was truncated.
    *
+   * @param littleEndian Override stream's endianness.
    * @returns Number.
    */
 
-  public u32(): number {
+  public u32(littleEndian = this.#little): number {
     const start = this.#offset;
     if (Number.isNaN(this.#check(4))) {
       return NaN;
     }
-    return this.#dv.getUint32(start, this.#little);
+    return this.#dv.getUint32(start, littleEndian);
   }
 
   /**
    * Get an eight-byte unsigned integer. Advances the current read position by 8
    * bytes.  Returns -1n if truncation is allowed and the packet was truncated.
    *
+   * @param littleEndian Override stream's endianness.
    * @returns Bigint, since 2**64 > 2**53.
    */
-  public u64(): bigint {
+  public u64(littleEndian = this.#little): bigint {
     const start = this.#offset;
     if (Number.isNaN(this.#check(8))) {
       return -1n;
     }
-    return this.#dv.getBigUint64(start, this.#little);
+    return this.#dv.getBigUint64(start, littleEndian);
   }
 
   /**
@@ -331,28 +370,30 @@ export class DataViewReader {
    * Get a two-byte signed integer. Advances the current read position by 2
    * bytes.  Returns NaN if truncation is allowed and the packet was truncated.
    *
+   * @param littleEndian Override stream's endianness.
    * @returns Number.
    */
-  public i16(): number {
+  public i16(littleEndian = this.#little): number {
     const start = this.#offset;
     if (Number.isNaN(this.#check(2))) {
       return NaN;
     }
-    return this.#dv.getInt16(start, this.#little);
+    return this.#dv.getInt16(start, littleEndian);
   }
 
   /**
    * Get a four-byte signed integer. Advances the current read position by 4
    * bytes.  Returns NaN if truncation is allowed and the packet was truncated.
    *
+   * @param littleEndian Override stream's endianness.
    * @returns Number.
    */
-  public i32(): number {
+  public i32(littleEndian = this.#little): number {
     const start = this.#offset;
     if (Number.isNaN(this.#check(4))) {
       return NaN;
     }
-    return this.#dv.getInt32(start, this.#little);
+    return this.#dv.getInt32(start, littleEndian);
   }
 
   /**
@@ -360,15 +401,16 @@ export class DataViewReader {
    * bytes.  Returns DataViewReader.BAD_I64 if truncation is allowed and the
    * packet was truncated.
    *
+   * @param littleEndian Override stream's endianness.
    * @returns Bigint.
    */
 
-  public i64(): bigint {
+  public i64(littleEndian = this.#little): bigint {
     const start = this.#offset;
     if (Number.isNaN(this.#check(8))) {
       return DataViewReader.BAD_I64;
     }
-    return this.#dv.getBigInt64(start, this.#little);
+    return this.#dv.getBigInt64(start, littleEndian);
   }
 
   /**
@@ -378,19 +420,17 @@ export class DataViewReader {
    *
    * Advances the current read position by 2 bytes.
    *
+   * @param littleEndian Override stream's endianness.
    * @returns Number.
    */
-  public f16(): number {
+  public f16(littleEndian = this.#little): number {
     const start = this.#offset;
     if (Number.isNaN(this.#check(2))) {
       // This is not ideal for floats, since NaN is a valid thing to have
       // read.
       return NaN;
     }
-    if (this.#dv.getFloat16) {
-      return this.#dv.getFloat16(start, this.#little);
-    }
-    return parseHalf(this.#bytes, start, this.#little);
+    return parseHalf(this.#dv, start, littleEndian);
   }
 
   /**
@@ -399,14 +439,15 @@ export class DataViewReader {
    *
    * Advances the current read position by 4 bytes.
    *
+   * @param littleEndian Override stream's endianness.
    * @returns Number.
    */
-  public f32(): number {
+  public f32(littleEndian = this.#little): number {
     const start = this.#offset;
     if (Number.isNaN(this.#check(4))) {
       return NaN;
     }
-    return this.#dv.getFloat32(start, this.#little);
+    return this.#dv.getFloat32(start, littleEndian);
   }
 
   /**
@@ -415,14 +456,15 @@ export class DataViewReader {
    *
    * Advances the current read position by 8 bytes.
    *
+   * @param littleEndian Override stream's endianness.
    * @returns Number.
    */
-  public f64(): number {
+  public f64(littleEndian = this.#little): number {
     const start = this.#offset;
     if (Number.isNaN(this.#check(4))) {
       return NaN;
     }
-    return this.#dv.getFloat64(start, this.#little);
+    return this.#dv.getFloat64(start, littleEndian);
   }
 
   /**
@@ -438,6 +480,53 @@ export class DataViewReader {
       res[i] = fn.call(this, i);
     }
     return res;
+  }
+
+  public struct<T extends StructDefinition>(description: T): Struct<T> {
+    const temp: Temp = {};
+    const res: Partial<Struct<T>> = {};
+    // eslint-disable-next-line guard-for-in
+    for (const k in description) {
+      const v = description[k];
+      let val: any = undefined;
+      switch (v.read) {
+        case 'u8':
+        case 'u16':
+        case 'u32':
+        case 'u64':
+        case 'i8':
+        case 'i16':
+        case 'i32':
+        case 'i64':
+        case 'f16':
+        case 'f32':
+        case 'f64':
+          val = this[v.read](v.littleEndian);
+          break;
+        case 'ascii':
+        case 'utf8':
+          val = this[v.read](v.length(temp, this));
+          if (v.convert) {
+            val = v.convert(val, temp, this);
+          }
+          break;
+        case 'bytes':
+          val = this[v.read](v.length(temp, this));
+          if (v.convert) {
+            val = v.convert(val, temp, this);
+          }
+          break;
+        case 'constant':
+          val = v.value(temp, this);
+          break;
+      }
+      if (k.startsWith('_')) {
+        temp[k.slice(1)] = val;
+      } else {
+        res[k as string as keyof Struct<T>] = val;
+      }
+    }
+    return res as Struct<T>;
   }
 
   /**
@@ -503,7 +592,7 @@ export class DataViewReader {
         this.#truncated = true;
         return NaN;
       }
-      throw new TruncationError(start, this.#offset, this.#len);
+      throw new TruncationError(start, add, this.#len);
     }
     return this.#offset;
   }

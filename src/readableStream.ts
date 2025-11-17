@@ -1,16 +1,16 @@
 import {
   CUSTOM_INSPECT,
-  type Inspect,
   type InspectOptions,
   u8toHex,
 } from './inspect.ts';
+import {assert, promiseWithResolvers} from '@cto.af/utils';
 import {halfToUint, isF16} from './half.ts';
 
 export {
   isF16,
 };
 
-export interface WriterOptions {
+export interface DataViewReadableStreamOptions {
   /**
    * How many bytes to allocate for each chunk?  Best case is that this number
    * is larger than your final size, so only one allocation has to happen and
@@ -30,11 +30,19 @@ export interface WriterOptions {
    * Do all reads as littleEndian, instead of network byte order (big endian).
    */
   littleEndian?: boolean;
+
+  /**
+   * Custom queueing strategy.
+   */
+  queuingStrategy?: QueuingStrategy<Uint8Array> | null;
 }
 
-export type RequiredWriterOptions = Required<WriterOptions>;
+export type RequiredDataViewReadableStreamOptions =
+  Required<DataViewReadableStreamOptions>;
 
 const TE = new TextEncoder();
+const NOT_INITIALIZED = 'DataViewReadableStream not initialized, await .ready';
+const INTERNAL = Symbol('DataViewReadableStream internal');
 
 /**
  * Is the number an integer in the given range, inclusive?
@@ -58,61 +66,87 @@ function intRange(
  * Write bytes to a growing buffer.  Intended for relatively-small final
  * buffer sizes; everything is held in memory.
  */
-export class DataViewWriter {
-  public static defaultOptions: RequiredWriterOptions = {
+export class DataViewReadableStream extends ReadableStream<Uint8Array> {
+  public static defaultOptions: RequiredDataViewReadableStreamOptions = {
     chunkSize: 4096,
     copyBuffers: false,
     littleEndian: false,
+    queuingStrategy: null,
   };
 
-  #opts: RequiredWriterOptions;
-  #chunks: Uint8Array[] = []; // Invariant: always at least one chunk.
+  #opts: RequiredDataViewReadableStreamOptions;
+  #chunk: Uint8Array;
   #dv: DataView | null = null; // View over last chunk.
-  #offset = Infinity; // Use Infinity for "full".
-  #length = 0;
+  #offset = 0;
+  #controller: ReadableStreamDefaultController | undefined = undefined;
+  #ready: Promise<void>;
 
-  public constructor(opts: WriterOptions = {}) {
-    this.#opts = {
-      ...DataViewWriter.defaultOptions,
-      ...opts,
+  private constructor(
+    options: DataViewReadableStreamOptions,
+    internal: typeof INTERNAL
+  ) {
+    if (internal !== INTERNAL) {
+      throw new Error('Await the result of DataViewReadableStream.create instead of calling new.');
+    }
+
+    const opts = {
+      ...DataViewReadableStream.defaultOptions,
+      ...options,
     };
-    intRange(this.#opts.chunkSize, 8, Number.MAX_SAFE_INTEGER);
-    this.#alloc();
+    intRange(opts.chunkSize, 8, Number.MAX_SAFE_INTEGER);
+    const p = promiseWithResolvers<ReadableStreamDefaultController>();
+
+    const ready = p.promise.then(c => {
+      this.#controller = c;
+    });
+
+    /** @see https://developer.mozilla.org/en-US/docs/Web/API/ReadableStream/ReadableStream */
+    super({
+      start(c) {
+        p.resolve(c);
+        return ready; // Wait for this.#q to drain before continuing.
+      },
+      cancel(reason?: any) {
+        // This can never happen before start, but it's here for completeness
+        // and in case other runtimes don't have that limitation.
+        p.reject(reason);
+      },
+    }, opts.queuingStrategy ?? undefined);
+
+    this.#opts = opts;
+
+    // Unroll #alloc to make it clear we are initializing #chunk.
+    this.#chunk = new Uint8Array(this.#opts.chunkSize);
+    this.#dv = new DataView(
+      this.#chunk.buffer,
+      this.#chunk.byteOffset,
+      this.#chunk.byteLength
+    );
+    this.#ready = ready;
+  }
+
+  public get littleEndian(): boolean {
+    return this.#opts.littleEndian;
+  }
+
+  public set littleEndian(value: boolean) {
+    this.#opts.littleEndian = value;
+  }
+
+  public static async create(
+    options: DataViewReadableStreamOptions = {}
+  ): Promise<DataViewReadableStream> {
+    const res = new DataViewReadableStream(options, INTERNAL);
+    return res.#ready.then(() => res);
   }
 
   /**
-   * Current number of bytes in the writer.
-   *
-   * @returns Length in bytes.
-   */
-  public get length(): number {
-    return this.#length;
-  }
-
-  /**
-   * Destructively read all bytes from the writer as a single buffer.
-   * Could take some time if there are lots of chunks.
+   * Destructively read all bytes from the reader as a single buffer.
    *
    * @returns Bytes.
    */
-  public read(): Uint8Array {
-    const buf = this.#read(true);
-    this.clear();
-    return buf;
-  }
-
-  /**
-   * Read the current contents of the writer as a single buffer, but does not
-   * clear the current contents.  This has a side effect, which is to coalesce
-   * multiple chunks into a single chunk, making subsequent read() and peek()
-   * operations a little faster.  Note: there is no need to call peek() before
-   * read() for performance, read() does the same coalescing, then throws away
-   * the result.
-   *
-   * @returns Current contents of the writer.
-   */
-  public peek(): Uint8Array {
-    return this.#read(false);
+  public read(): Promise<Uint8Array> {
+    return new Response(this).bytes();
   }
 
   /**
@@ -126,32 +160,17 @@ export class DataViewWriter {
    * @param copy Override the copyBuffers option if specified.
    * @returns This, for chaining.
    */
-  public write(buf: Uint8Array, copy = this.#opts.copyBuffers): this {
+  public bytes(buf: Uint8Array, copy = this.#opts.copyBuffers): this {
     const len = buf.length;
-    if (len > this.#left()) {
-      // Either we just started, we exactly filled the previous chunk, or the
-      // previous chunk was from a write.
-      if (this.#offset === 0) {
-        this.#chunks.pop();
-      } else {
-        this.#trim();
-      }
-      if (len > (this.#opts.chunkSize - 8)) {
-        // Won't fit, just re-use the existing buffer.
-        this.#chunks.push(copy ? buf.slice() : buf);
-        this.#offset = len;
-        this.#dv = null;
-      } else {
-        this.#alloc();
-        this.#chunks[this.#chunks.length - 1].set(buf, 0);
-        this.#offset = len;
-      }
+    this.#makeSpace(len + 8);
+    if (len > (this.#opts.chunkSize - 8)) {
+      // Won't fit, just re-use the existing buffer.
+      this.#enq(copy ? buf.slice() : buf);
     } else {
       // There is room left in the existing chunk
-      this.#chunks[this.#chunks.length - 1].set(buf, this.#offset);
+      this.#chunk.set(buf, this.#offset);
       this.#offset += len;
     }
-    this.#length += len;
     return this;
   }
 
@@ -171,11 +190,12 @@ export class DataViewWriter {
    * Write a two-byte unsigned integer.
    *
    * @param n Unsigned short int.
+   * @param littleEndian Override stream's littleEndian option.
    * @returns This, for chaining.
    */
-  public u16(n: number): this {
+  public u16(n: number, littleEndian = this.#opts.littleEndian): this {
     intRange(n, 0, 0xffff);
-    this.#makeSpace(2).setUint16(this.#offset, n, this.#opts.littleEndian);
+    this.#makeSpace(2).setUint16(this.#offset, n, littleEndian);
     return this.#advance(2);
   }
 
@@ -183,11 +203,12 @@ export class DataViewWriter {
    * Write a four-byte unsigned integer.
    *
    * @param n Unsigned int.
+   * @param littleEndian Override stream's littleEndian option.
    * @returns This, for chaining.
    */
-  public u32(n: number): this {
+  public u32(n: number, littleEndian = this.#opts.littleEndian): this {
     intRange(n, 0, 0xffffffff);
-    this.#makeSpace(4).setUint32(this.#offset, n, this.#opts.littleEndian);
+    this.#makeSpace(4).setUint32(this.#offset, n, littleEndian);
     return this.#advance(4);
   }
 
@@ -195,12 +216,13 @@ export class DataViewWriter {
    * Write an eight-byte unsigned integer.
    *
    * @param n Unsigned long long.
+   * @param littleEndian Override stream's littleEndian option.
    * @returns This, for chaining.
    */
-  public u64(n: bigint | number): this {
+  public u64(n: bigint | number, littleEndian = this.#opts.littleEndian): this {
     intRange(n, 0n, 0xffffffffffffffffn);
     this.#makeSpace(8)
-      .setBigUint64(this.#offset, BigInt(n), this.#opts.littleEndian);
+      .setBigUint64(this.#offset, BigInt(n), littleEndian);
     return this.#advance(8);
   }
 
@@ -220,11 +242,12 @@ export class DataViewWriter {
    * Write a signed two-byte integer.
    *
    * @param n Signed short int.
+   * @param littleEndian Override stream's littleEndian option.
    * @returns This, for chaining.
    */
-  public i16(n: number): this {
+  public i16(n: number, littleEndian = this.#opts.littleEndian): this {
     intRange(n, -0x8000, 0x7fff);
-    this.#makeSpace(2).setInt16(this.#offset, n, this.#opts.littleEndian);
+    this.#makeSpace(2).setInt16(this.#offset, n, littleEndian);
     return this.#advance(2);
   }
 
@@ -232,11 +255,12 @@ export class DataViewWriter {
    * Write a signed four-byte integer.
    *
    * @param n Signed int.
+   * @param littleEndian Override stream's littleEndian option.
    * @returns This, for chaining.
    */
-  public i32(n: number): this {
+  public i32(n: number, littleEndian = this.#opts.littleEndian): this {
     intRange(n, -0x80000000, 0x7fffffff);
-    this.#makeSpace(4).setInt32(this.#offset, n, this.#opts.littleEndian);
+    this.#makeSpace(4).setInt32(this.#offset, n, littleEndian);
     return this.#advance(4);
   }
 
@@ -244,12 +268,13 @@ export class DataViewWriter {
    * Write an eight-byte signed integer.
    *
    * @param n Signed long long.
+   * @param littleEndian Override stream's littleEndian option.
    * @returns This, for chaining.
    */
-  public i64(n: bigint | number): this {
+  public i64(n: bigint | number, littleEndian = this.#opts.littleEndian): this {
     intRange(n, -0x8000000000000000n, 0x7fffffffffffffffn);
     this.#makeSpace(8)
-      .setBigInt64(this.#offset, BigInt(n), this.#opts.littleEndian);
+      .setBigInt64(this.#offset, BigInt(n), littleEndian);
     return this.#advance(8);
   }
 
@@ -257,23 +282,20 @@ export class DataViewWriter {
    * Write a two-byte float.
    *
    * @param n Number that fits in a short float without losing precision.
+   * @param littleEndian Override stream's littleEndian option.
    * @returns This, for chaining.
    * @throws {RangeError} If number would lose precision on write.
    */
-  public f16(n: number): this {
+  public f16(n: number, littleEndian = this.#opts.littleEndian): this {
     if (!isF16(n)) {
       throw new RangeError('Casting this number to float16 would lose precision');
     }
     const dv = this.#makeSpace(2);
     if (dv.setFloat16) {
       // New in node v24.
-      dv.setFloat16(this.#offset, n, this.#opts.littleEndian);
+      dv.setFloat16(this.#offset, n, littleEndian);
     } else {
-      dv.setUint16(
-        this.#offset,
-        halfToUint(n) as number,
-        this.#opts.littleEndian
-      );
+      dv.setUint16(this.#offset, halfToUint(n) as number, littleEndian);
     }
     return this.#advance(2);
   }
@@ -282,14 +304,15 @@ export class DataViewWriter {
    * Write a four-byte float.
    *
    * @param n Number that fits in a float.
+   * @param littleEndian Override stream's littleEndian option.
    * @returns This, for chaining.
    * @throws {RangeError} Would lose precision.
    */
-  public f32(n: number): this {
+  public f32(n: number, littleEndian = this.#opts.littleEndian): this {
     if (!Object.is(n, Math.fround(n))) { // -0, NaN
       throw new RangeError('Casting this number to float32 would lose precision');
     }
-    this.#makeSpace(4).setFloat32(this.#offset, n, this.#opts.littleEndian);
+    this.#makeSpace(4).setFloat32(this.#offset, n, littleEndian);
     return this.#advance(4);
   }
 
@@ -297,10 +320,11 @@ export class DataViewWriter {
    * Write an eight-byte integer.
    *
    * @param n Double.
+   * @param littleEndian Override stream's littleEndian option.
    * @returns This, for chaining.
    */
-  public f64(n: number): this {
-    this.#makeSpace(8).setFloat64(this.#offset, n, this.#opts.littleEndian);
+  public f64(n: number, littleEndian = this.#opts.littleEndian): this {
+    this.#makeSpace(8).setFloat64(this.#offset, n, littleEndian);
     return this.#advance(8);
   }
 
@@ -312,7 +336,7 @@ export class DataViewWriter {
    * @returns This, for chaining.
    */
   public utf8(s: string): this {
-    return this.write(TE.encode(s), false);
+    return this.bytes(TE.encode(s), false);
   }
 
   /**
@@ -331,18 +355,33 @@ export class DataViewWriter {
       }
       return cp;
     });
-    return this.write(buf, false);
+    return this.bytes(buf, false);
   }
 
   /**
-   * Clear all of the existing data.
+   * Usually, chunks will be only become available to be read after chunkSize
+   * bytes have been written.  Flush forces whatever is currently queued into
+   * the readable stream.
    *
    * @returns This, for chaining.
    */
-  public clear(): this {
-    this.#length = 0;
-    this.#chunks = [];
-    this.#alloc();
+  public flush(): this {
+    if (this.#offset > 0) {
+      this.#enq(this.#chunk.subarray(0, this.#offset));
+      this.#alloc();
+    }
+    return this;
+  }
+
+  /**
+   * No more data will be written.  Flush everything that is pending.
+   *
+   * @returns This, for chaining.
+   */
+  public end(): this {
+    this.flush();
+    assert(this.#controller, NOT_INITIALIZED);
+    this.#controller.close();
     return this;
   }
 
@@ -352,28 +391,22 @@ export class DataViewWriter {
    *
    * @param depth Current depth.
    * @param options Options for writing, generated by util.inpect.
-   * @param inspect Local copy of util.inspect, so there is no node dependency.
    * @returns Formatted string.
    */
   public [CUSTOM_INSPECT](
     depth: number,
-    options: InspectOptions,
-    inspect: Inspect
+    options: InspectOptions
   ): string {
     if (depth < 0) {
-      return options.stylize('[DataViewWriter]', 'special');
+      return options.stylize(`[${this.constructor.name}]`, 'special');
     }
 
-    const last = this.#chunks.length - 1;
-    const bufStr = this.#chunks.map((c, i) => {
-      if (i === last) {
-        c = c.subarray(0, this.#offset);
-      }
-      return options.stylize(u8toHex(c), 'string');
-    }).join('\n  ');
-    return `${options.stylize('DataViewWriter', 'special')} { length: ${inspect(this.#length, options)}, chunks: [
-  ${bufStr}
-] }`;
+    let res = `${options.stylize(this.constructor.name, 'special')} [`;
+    if (this.#offset) {
+      res += options.stylize(u8toHex(this.#chunk.subarray(0, this.#offset)), 'string');
+    }
+    res += ']';
+    return res;
   }
 
   /**
@@ -381,22 +414,13 @@ export class DataViewWriter {
    * calling, if one exists.
    */
   #alloc(): void {
-    const buf = new Uint8Array(this.#opts.chunkSize);
-    this.#chunks.push(buf);
+    this.#chunk = new Uint8Array(this.#opts.chunkSize);
+    this.#dv = new DataView(
+      this.#chunk.buffer,
+      this.#chunk.byteOffset,
+      this.#chunk.byteLength
+    );
     this.#offset = 0;
-    this.#dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
-  }
-
-  /**
-   * Trim the previous last block so that it only has offset bytes.
-   */
-  #trim(): void {
-    const last = this.#chunks.length - 1;
-    const lastChunk = this.#chunks[last];
-    if (lastChunk.length !== this.#offset) {
-      this.#chunks[last] = lastChunk.subarray(0, this.#offset);
-      this.#dv = null;
-    }
   }
 
   /**
@@ -405,8 +429,7 @@ export class DataViewWriter {
    * @returns Number of bytes safe to write.
    */
   #left(): number {
-    const last = this.#chunks.length - 1;
-    return this.#chunks[last].length - this.#offset;
+    return this.#chunk.length - this.#offset;
   }
 
   /**
@@ -416,10 +439,8 @@ export class DataViewWriter {
    * @returns The current view for the last chunk.
    */
   #makeSpace(sz: number): DataView {
-    // Assert: sz <= this.#opts.chunkSize
     if (this.#left() < sz) {
-      this.#trim();
-      this.#alloc();
+      this.flush();
     }
     // Assert(this.#dv)
     return this.#dv as DataView;
@@ -433,34 +454,18 @@ export class DataViewWriter {
    */
   #advance(sz: number): this {
     this.#offset += sz;
-    this.#length += sz;
     return this;
   }
 
   /**
-   * Either peek or read.
+   * Push the given buffer into the output.
    *
-   * @param clear If false, coalesce chunks when needed.
-   * @returns The current full contents.
+   * @param buf Buffer to push.
+   * @returns This, for chaining.
    */
-  #read(clear = true): Uint8Array {
-    this.#trim();
-    let ret: Uint8Array | null = null;
-    const count = this.#chunks.length; // Always 1+
-    if (count === 1) {
-      [ret] = this.#chunks; // Above trim makes this right
-    } else {
-      ret = new Uint8Array(this.#length);
-      let len = 0;
-      for (const u8 of this.#chunks) {
-        ret.set(u8, len); // Last chunk already trimmed
-        len += u8.length;
-      }
-      if (!clear) {
-        this.#chunks = [ret];
-        this.#offset = len;
-      }
-    }
-    return ret;
+  #enq(buf: Uint8Array): this {
+    assert(this.#controller, NOT_INITIALIZED);
+    this.#controller.enqueue(buf);
+    return this;
   }
 }

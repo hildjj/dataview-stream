@@ -6,7 +6,8 @@ export default defineConfig({
   entry: [
     'src/index.ts',
     'src/reader.ts',
-    'src/writer.ts',
+    'src/readableStream.ts',
+    'src/writableStream.ts',
     'src/packet.ts',
   ],
   format: 'esm',

@@ -6,7 +6,8 @@
   "exports": {
     ".": "./lib/index.mjs",
     "./reader": "./lib/reader.mjs",
-    "./writer": "./lib/writer.mjs",
+    "./readableStream": "./lib/readableStream.mjs",
+    "./writableStream": "./lib/writableStream.mjs",
     "./packet": "./lib/packet.mjs"
   },
   "files": [
@@ -27,24 +28,29 @@
   "scripts": {
     "clean": "rm -rf coverage docs lib",
     "lint": "eslint .",
-    "test": "vitest --run",
+    "test": "NODE_OPTIONS=--experimental-json-modules vitest --run --project node",
+    "test:all": "NODE_OPTIONS=--experimental-json-modules vitest --run",
     "docs": "typedoc",
     "ts": "tsdown",
-    "build": "npm run ts && npm run test && npm run lint && npm run docs && npm pack --dry-run"
+    "build": "npm run ts && npm run test:all && npm run lint && npm run docs && npm pack --dry-run"
+  },
+  "dependencies": {
+    "@cto.af/utils": "1.3.6"
   },
   "devDependencies": {
-    "@cto.af/eslint-config": "6.1.0",
+    "@cto.af/eslint-config": "6.2.1",
     "@eslint/markdown": "7.5.1",
-    "@vitest/coverage-v8": "4.0.8",
+    "@vitest/browser-playwright": "4.0.15",
+    "@vitest/coverage-istanbul": "4.0.15",
     "eslint": "9.39.1",
-    "eslint-plugin-jsdoc": "61.1.12",
-    "tsdown": "^0.16.2",
-    "typedoc": "0.28.14",
+    "eslint-plugin-jsdoc": "61.5.0",
+    "tsdown": "^0.17.2",
+    "typedoc": "0.28.15",
     "typescript": "5.9.3",
-    "typescript-eslint": "8.46.4",
-    "vitest": "4.0.8"
+    "typescript-eslint": "8.49.0",
+    "vitest": "4.0.15"
   },
-  "packageManager": "pnpm@10.21.0",
+  "packageManager": "pnpm@10.25.0",
   "engines": {
     "node": ">=20"
   }

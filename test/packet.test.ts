@@ -66,10 +66,12 @@ describe('Packet', () => {
     assert.equal(p.packet.foo, 1);
     p.reset()
       .i8('foo', {convert: i => i << 2})
-      .i16('bop');
+      .i16('bop')
+      .i8('blort');
     assert.deepEqual(p.packet as object, {
       foo: 4,
       bop: 0x0203,
+      blort: 4,
     });
     assert.equal(p.reset().i32('foo').packet.foo, 0x01020304);
     assert.equal(p.reset().i64('u64').packet.u64, 0x0102030403616263n);
@@ -95,6 +97,15 @@ describe('Packet', () => {
       .u8('foo');
     assert.equal(p.packet.foo, 2);
     assert.throws(() => p.bytes('baz', 8));
+  });
+
+  test('bits', () => {
+    const r = new DataViewReader(new Uint8Array([0x61, 0x62]));
+    const p = new Packet<Foo>(r);
+    assert.throws(() => p.bits(
+      // @ts-expect-error Intentially invalid
+      {}
+    ), /Invalid from\/fromTemp/);
   });
 
   interface While {
@@ -134,5 +145,13 @@ describe('Packet', () => {
     assert.throws(() => {
       p.allowTruncation = false;
     });
+  });
+
+  test('littleEndian', () => {
+    const r = new DataViewReader(new Uint8Array([0x61, 0x62]));
+    const p = new Packet<Foo>(r);
+    assert.equal(p.littleEndian, false);
+    p.littleEndian = true;
+    assert.equal(p.littleEndian, true);
   });
 });
