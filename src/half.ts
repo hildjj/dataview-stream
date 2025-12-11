@@ -3,28 +3,31 @@
 /**
  * Parse a big endian float16 from a buffer.
  *
- * @param buf Buffer to read from.
+ * @param dv View to read from.
  * @param offset Offset into buf to start reading 2 octets.
  * @param littleEndian Bytes swapped?
  * @returns Parsed float.
  */
 export function parseHalf(
-  buf: Uint8Array,
+  dv: DataView,
   offset = 0,
   littleEndian = false
 ): number {
-  const [first, second] = littleEndian ?
-    [buf[offset + 1], buf[offset]] :
-    [buf[offset], buf[offset + 1]];
+  if (dv.getFloat16) {
+    // New in node 24.
+    return dv.getFloat16(offset, littleEndian);
+  }
+  const u16 = dv.getUint16(offset, littleEndian);
 
-  const sign = first & 0x80 ? -1 : 1;
-  const exp = (first & 0x7C) >> 2;
-  const mant = ((first & 0x03) << 8) | second;
+  const sign = (u16 & 0x8000) ? -1 : 1;
+  const exp = (u16 & 0x7C00) >> 10;
+  const mant = u16 & 0x3ff;
   if (exp === 0) {
+    // Sub-normal
     return sign * 5.9604644775390625e-8 * mant;
   } else if (exp === 0x1f) {
     if (mant) {
-      // Always simplify NaNs, since non-simple NaNs are different in different
+      // Always simplify NaNs, since non-trivial NaNs are different in different
       // JS engines.
       return NaN;
     }
@@ -95,6 +98,7 @@ export function halfToUint(half: number): number | null {
 export function isF16(n: number): boolean {
   if (Math.f16round) {
     // Should work for -0, NaN, Infinities
+    // New in node 24.
     return Object.is(n, Math.f16round(n));
   }
   return halfToUint(n) !== null;

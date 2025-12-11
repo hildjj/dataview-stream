@@ -1,17 +1,8 @@
 import {CUSTOM_INSPECT, type InspectOptions} from '../src/inspect.ts';
-import {DataViewReader, ExtraBytesError, TruncationError} from '../src/reader.ts';
+import {DataViewReader, type Temp} from '../src/reader.ts';
+import {ExtraBytesError, TruncationError} from '../src/errors.ts';
 import {assert, describe, test} from 'vitest';
-
-function withNo16(f: () => void): void {
-  const f16 = DataView.prototype.getFloat16;
-  // @ts-expect-error Hack.
-  delete DataView.prototype.getFloat16;
-
-  f();
-
-  // eslint-disable-next-line no-extend-native
-  DataView.prototype.getFloat16 = f16;
-}
+import {withNo16} from './utils.ts';
 
 describe('reader', () => {
   test('DataViewReader', () => {
@@ -24,6 +15,11 @@ describe('reader', () => {
 
     const d = new DataViewReader(buf);
     assert(d);
+    assert.equal(d.finished, false);
+    assert.equal(d.littleEndian, false);
+    d.littleEndian = true;
+    assert.equal(d.littleEndian, true);
+    d.littleEndian = false;
     assert.equal(d.u8(), 0x61);
     assert.equal(d.u16(), 0x6263);
     assert.equal(d.offset, 3);
@@ -156,6 +152,25 @@ describe('reader', () => {
     });
     assert.doesNotThrow(() => {
       r.allowTruncation = true;
+    });
+  });
+
+  test('struct', () => {
+    const buf = new Uint8Array([
+      0x02, 0x61, 0x62, 0x03, 0x64, 0x65, 0x66, 0x67, 0x68,
+    ]);
+    const r = new DataViewReader(buf);
+
+    const x = {
+      _one: {read: 'u8'},
+      ascii: {read: 'ascii', length: (t: Temp) => t.one as number},
+    } as const;
+
+    assert.deepEqual(r.struct(x), {
+      ascii: 'ab',
+    });
+    assert.deepEqual(r.struct(x), {
+      ascii: 'def',
     });
   });
 });

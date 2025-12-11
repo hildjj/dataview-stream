@@ -1,4 +1,5 @@
 import {DataViewReader, type FieldType} from './reader.ts';
+import {assert} from '@cto.af/utils';
 
 export {
   DataViewReader,
@@ -26,36 +27,54 @@ export interface BigFlagSet {
   set: {[flag: string]: bigint};
 }
 
-export type StartFinish = NumStartFinish |
-  BigStartFinish |
-  FlagSet |
-  BigFlagSet;
-
-export interface SimpleBitsConfig {
-  convert?(value: number | boolean, name: string): void;
+export interface SimpleBitsConfig<V extends number | bigint, W> {
+  convert?(value: V, name: string): W;
 }
 
-export type BitsConfig = SimpleBitsConfig & StartFinish;
+export type BitsConfig<From, To> =
+  From extends (number | undefined) ?
+    (NumStartFinish | FlagSet) & SimpleBitsConfig<number, To> :
+    From extends (bigint | undefined) ?
+      (BigStartFinish | BigFlagSet) & SimpleBitsConfig<bigint, To> :
+      never;
 
-export interface ReadOpts<F = FieldType> {
+export interface EasyReadOpts {
   /**
-   * If true, write to temp instead of packet.
+   * If specified, override the endiannes of the stream.
    */
-  temp?: boolean;
+  littleEndian?: boolean;
+}
 
+export type ConvertReadOpts<F extends FieldType, G> = G extends F ? {
+  // Optional if G matches F.
+  convert?(value: F, name: string, temp: boolean): G;
+} : {
   /**
    * If specified, run the results through the given function before storing.
+   * Required if the destination type is not the same as the read type.
    *
    * @param value Original read value.
    * @param name The field being stored to.  May be ignored.
    * @param temp Is the field being stored to in temp rather than packet?
    * @returns Converted value.
    */
-  convert?(value: F, name: string, temp: boolean): unknown;
-}
+  convert(value: F, name: string, temp: boolean): G;
+};
 
-export type NotTemp<F> = Omit<ReadOpts<F>, 'temp'> & {temp?: false};
-export type HasTemp<F> = ReadOpts<F> & {temp: true};
+export type ReadOpts<F extends FieldType, G> = EasyReadOpts &
+  ConvertReadOpts<F, G> & {
+    /**
+     * If true, write to temp instead of packet.
+     */
+    temp?: boolean;
+  };
+
+export type NotTemp<F extends FieldType, G> =
+  EasyReadOpts & ConvertReadOpts<F, G> & {temp?: false};
+export type HasTemp<F extends FieldType, G> =
+  EasyReadOpts & ConvertReadOpts<F, G> & {temp: true};
+export type MatchingType<T extends object, V extends keyof T, U> =
+  T[V] extends (U | undefined) ? V : never;
 
 /**
  * Capture fields from a packet in a way that allows accessing the previously-
@@ -72,6 +91,19 @@ export class Packet<T extends object, U = object> {
 
   public constructor(reader: DataViewReader) {
     this.#r = reader;
+  }
+
+  /**
+   * Is the packet in littleEndian mode by default?
+   *
+   * @type {boolean}
+   */
+  public get littleEndian(): boolean {
+    return this.#r.littleEndian;
+  }
+
+  public set littleEndian(val: boolean) {
+    this.#r.littleEndian = val;
   }
 
   /**
@@ -197,11 +229,17 @@ export class Packet<T extends object, U = object> {
    * @param opts Read options.
    * @returns This, for chaining.
    */
-  public unused(name: keyof T, opts?: NotTemp<Uint8Array>): this;
-  public unused(name: keyof U, opts: HasTemp<Uint8Array>): this;
+  public unused<V extends keyof T>(
+    name: V, opts: NotTemp<Uint8Array, T[V]>
+  ): this;
+  public unused<V extends keyof T>(
+    name: MatchingType<T, V, Uint8Array>
+  ): this;
+  public unused<V extends keyof U>(
+    name: V, opts: HasTemp<Uint8Array, U[V]>
+  ): this;
   public unused(
-    name: keyof T | keyof U,
-    opts: ReadOpts<Uint8Array> = {temp: false}
+    name: keyof T | keyof U, opts: ReadOpts<Uint8Array, any> = {}
   ): this {
     return this.#store(name, this.#r.unused(), opts);
   }
@@ -214,12 +252,17 @@ export class Packet<T extends object, U = object> {
    * @param opts Read options.
    * @returns This, for chaining.
    */
-  public bytes(name: keyof T, len: number, opts?: NotTemp<Uint8Array>): this;
-  public bytes(name: keyof U, len: number, opts: HasTemp<Uint8Array>): this;
+  public bytes<V extends keyof T>(
+    name: V, len: number, opts: NotTemp<Uint8Array, T[V]>
+  ): this;
+  public bytes<V extends keyof T>(
+    name: MatchingType<T, V, Uint8Array>, len: number
+  ): this;
+  public bytes<V extends keyof U>(
+    name: V, len: number, opts: HasTemp<Uint8Array, U[V]>
+  ): this;
   public bytes(
-    name: keyof T | keyof U,
-    len: number,
-    opts: ReadOpts<Uint8Array> = {temp: false}
+    name: keyof T | keyof U, len: number, opts: ReadOpts<Uint8Array, any> = {}
   ): this {
     return this.#store(name, this.#r.bytes(len), opts);
   }
@@ -232,20 +275,17 @@ export class Packet<T extends object, U = object> {
    * @param opts Read options.
    * @returns This, for chaining.
    */
-  public ascii(
-    name: keyof T,
-    len: number,
-    opts?: NotTemp<string>
+  public ascii<V extends keyof T>(
+    name: V, len: number, opts: NotTemp<string, T[V]>
+  ): this;
+  public ascii<V extends keyof T>(
+    name: MatchingType<T, V, string>, len: number
+  ): this;
+  public ascii<V extends keyof U>(
+    name: V, len: number, opts: HasTemp<string, U[V]>
   ): this;
   public ascii(
-    name: keyof U,
-    len: number,
-    opts: HasTemp<string>
-  ): this;
-  public ascii(
-    name: keyof T | keyof U,
-    len: number,
-    opts: ReadOpts<string> = {temp: false}
+    name: keyof T | keyof U, len: number, opts: ReadOpts<string, any> = {}
   ): this {
     return this.#store(name, this.#r.ascii(len), opts);
   }
@@ -258,16 +298,17 @@ export class Packet<T extends object, U = object> {
    * @param opts Read options.
    * @returns This, for chaining.
    */
-  public utf8(name: keyof T, len: number, opts?: NotTemp<string>): this;
-  public utf8(
-    name: keyof U,
-    len: number,
-    opts: HasTemp<string>
+  public utf8<V extends keyof T>(
+    name: V, len: number, opts: NotTemp<string, T[V]>
+  ): this;
+  public utf8<V extends keyof T>(
+    name: MatchingType<T, V, string>, len: number
+  ): this;
+  public utf8<V extends keyof U>(
+    name: V, len: number, opts: HasTemp<string, U[V]>
   ): this;
   public utf8(
-    name: keyof T | keyof U,
-    len: number,
-    opts: ReadOpts<string> = {temp: false}
+    name: keyof T | keyof U, len: number, opts: ReadOpts<string, any> = {}
   ): this {
     return this.#store(name, this.#r.utf8(len), opts);
   }
@@ -279,12 +320,10 @@ export class Packet<T extends object, U = object> {
    * @param opts Read options.
    * @returns This, for chaining.
    */
-  public u8(name: keyof T, opts?: NotTemp<number>): this;
-  public u8(name: keyof U, opts: HasTemp<number>): this;
-  public u8(
-    name: keyof T | keyof U,
-    opts: ReadOpts<number> = {temp: false}
-  ): this {
+  public u8<V extends keyof T>(name: V, opts: NotTemp<number, T[V]>): this;
+  public u8<V extends keyof T>(name: MatchingType<T, V, number>): this;
+  public u8<V extends keyof U>(name: V, opts: HasTemp<number, U[V]>): this;
+  public u8(name: keyof T | keyof U, opts: ReadOpts<number, any> = {}): this {
     return this.#store(name, this.#r.u8(), opts);
   }
 
@@ -295,13 +334,11 @@ export class Packet<T extends object, U = object> {
    * @param opts Read options.
    * @returns This, for chaining.
    */
-  public u16(name: keyof T, opts?: NotTemp<number>): this;
-  public u16(name: keyof U, opts: HasTemp<number>): this;
-  public u16(
-    name: keyof T | keyof U,
-    opts: ReadOpts<number> = {temp: false}
-  ): this {
-    return this.#store(name, this.#r.u16(), opts);
+  public u16<V extends keyof T>(name: V, opts: NotTemp<number, T[V]>): this;
+  public u16<V extends keyof T>(name: MatchingType<T, V, number>): this;
+  public u16<V extends keyof U>(name: V, opts: HasTemp<number, U[V]>): this;
+  public u16(name: keyof T | keyof U, opts: ReadOpts<number, any> = {}): this {
+    return this.#store(name, this.#r.u16(opts.littleEndian), opts);
   }
 
   /**
@@ -311,13 +348,11 @@ export class Packet<T extends object, U = object> {
    * @param opts Read options.
    * @returns This, for chaining.
    */
-  public u32(name: keyof T, opts?: NotTemp<number>): this;
-  public u32(name: keyof U, opts: HasTemp<number>): this;
-  public u32(
-    name: keyof T | keyof U,
-    opts: ReadOpts<number> = {temp: false}
-  ): this {
-    return this.#store(name, this.#r.u32(), opts);
+  public u32<V extends keyof T>(name: V, opts: NotTemp<number, T[V]>): this;
+  public u32<V extends keyof T>(name: MatchingType<T, V, number>): this;
+  public u32<V extends keyof U>(name: V, opts: HasTemp<number, U[V]>): this;
+  public u32(name: keyof T | keyof U, opts: ReadOpts<number, any> = {}): this {
+    return this.#store(name, this.#r.u32(opts.littleEndian), opts);
   }
 
   /**
@@ -327,13 +362,11 @@ export class Packet<T extends object, U = object> {
    * @param opts Read options.
    * @returns This, for chaining.
    */
-  public u64(name: keyof T, opts?: NotTemp<bigint>): this;
-  public u64(name: keyof U, opts: HasTemp<bigint>): this;
-  public u64(
-    name: keyof T | keyof U,
-    opts: ReadOpts<bigint> = {temp: false}
-  ): this {
-    return this.#store(name, this.#r.u64(), opts);
+  public u64<V extends keyof T>(name: V, opts: NotTemp<bigint, T[V]>): this;
+  public u64<V extends keyof T>(name: MatchingType<T, V, bigint>): this;
+  public u64<V extends keyof U>(name: V, opts: HasTemp<bigint, U[V]>): this;
+  public u64(name: keyof T | keyof U, opts: ReadOpts<bigint, any> = {}): this {
+    return this.#store(name, this.#r.u64(opts.littleEndian), opts);
   }
 
   /**
@@ -343,12 +376,10 @@ export class Packet<T extends object, U = object> {
    * @param opts Read options.
    * @returns This, for chaining.
    */
-  public i8(name: keyof T, opts?: NotTemp<number>): this;
-  public i8(name: keyof U, opts: HasTemp<number>): this;
-  public i8(
-    name: keyof T | keyof U,
-    opts: ReadOpts<number> = {temp: false}
-  ): this {
+  public i8<V extends keyof T>(name: V, opts: NotTemp<number, T[V]>): this;
+  public i8<V extends keyof T>(name: MatchingType<T, V, number>): this;
+  public i8<V extends keyof U>(name: V, opts: HasTemp<number, U[V]>): this;
+  public i8(name: keyof T | keyof U, opts: ReadOpts<number, any> = {}): this {
     return this.#store(name, this.#r.i8(), opts);
   }
 
@@ -359,13 +390,11 @@ export class Packet<T extends object, U = object> {
    * @param opts Read options.
    * @returns This, for chaining.
    */
-  public i16(name: keyof T, opts?: NotTemp<number>): this;
-  public i16(name: keyof U, opts: HasTemp<number>): this;
-  public i16(
-    name: keyof T | keyof U,
-    opts: ReadOpts<number> = {temp: false}
-  ): this {
-    return this.#store(name, this.#r.i16(), opts);
+  public i16<V extends keyof T>(name: V, opts: NotTemp<number, T[V]>): this;
+  public i16<V extends keyof T>(name: MatchingType<T, V, number>): this;
+  public i16<V extends keyof U>(name: V, opts: HasTemp<number, U[V]>): this;
+  public i16(name: keyof T | keyof U, opts: ReadOpts<number, any> = {}): this {
+    return this.#store(name, this.#r.i16(opts.littleEndian), opts);
   }
 
   /**
@@ -375,13 +404,11 @@ export class Packet<T extends object, U = object> {
    * @param opts Read options.
    * @returns This, for chaining.
    */
-  public i32(name: keyof T, opts?: NotTemp<number>): this;
-  public i32(name: keyof U, opts: HasTemp<number>): this;
-  public i32(
-    name: keyof T | keyof U,
-    opts: ReadOpts<number> = {temp: false}
-  ): this {
-    return this.#store(name, this.#r.i32(), opts);
+  public i32<V extends keyof T>(name: V, opts: NotTemp<number, T[V]>): this;
+  public i32<V extends keyof T>(name: MatchingType<T, V, number>): this;
+  public i32<V extends keyof U>(name: V, opts: HasTemp<number, U[V]>): this;
+  public i32(name: keyof T | keyof U, opts: ReadOpts<number, any> = {}): this {
+    return this.#store(name, this.#r.i32(opts.littleEndian), opts);
   }
 
   /**
@@ -391,13 +418,11 @@ export class Packet<T extends object, U = object> {
    * @param opts Read options.
    * @returns This, for chaining.
    */
-  public i64(name: keyof T, opts?: NotTemp<bigint>): this;
-  public i64(name: keyof U, opts: HasTemp<bigint>): this;
-  public i64(
-    name: keyof T | keyof U,
-    opts: ReadOpts<bigint> = {temp: false}
-  ): this {
-    return this.#store(name, this.#r.i64(), opts);
+  public i64<V extends keyof T>(name: V, opts: NotTemp<bigint, T[V]>): this;
+  public i64<V extends keyof T>(name: MatchingType<T, V, bigint>): this;
+  public i64<V extends keyof U>(name: V, opts: HasTemp<bigint, U[V]>): this;
+  public i64(name: keyof T | keyof U, opts: ReadOpts<bigint, any> = {}): this {
+    return this.#store(name, this.#r.i64(opts.littleEndian), opts);
   }
 
   /**
@@ -407,13 +432,11 @@ export class Packet<T extends object, U = object> {
    * @param opts Read options.
    * @returns This, for chaining.
    */
-  public f16(name: keyof T, opts?: NotTemp<number>): this;
-  public f16(name: keyof U, opts: HasTemp<number>): this;
-  public f16(
-    name: keyof T | keyof U,
-    opts: ReadOpts<number> = {temp: false}
-  ): this {
-    return this.#store(name, this.#r.f16(), opts);
+  public f16<V extends keyof T>(name: V, opts: NotTemp<number, T[V]>): this;
+  public f16<V extends keyof T>(name: MatchingType<T, V, number>): this;
+  public f16<V extends keyof U>(name: V, opts: HasTemp<number, U[V]>): this;
+  public f16(name: keyof T | keyof U, opts: ReadOpts<number, any> = {}): this {
+    return this.#store(name, this.#r.f16(opts.littleEndian), opts);
   }
 
   /**
@@ -423,13 +446,11 @@ export class Packet<T extends object, U = object> {
    * @param opts Read options.
    * @returns This, for chaining.
    */
-  public f32(name: keyof T, opts?: NotTemp<number>): this;
-  public f32(name: keyof U, opts: HasTemp<number>): this;
-  public f32(
-    name: keyof T | keyof U,
-    opts: ReadOpts<number> = {temp: false}
-  ): this {
-    return this.#store(name, this.#r.f32(), opts);
+  public f32<V extends keyof T>(name: V, opts: NotTemp<number, T[V]>): this;
+  public f32<V extends keyof T>(name: MatchingType<T, V, number>): this;
+  public f32<V extends keyof U>(name: V, opts: HasTemp<number, U[V]>): this;
+  public f32(name: keyof T | keyof U, opts: ReadOpts<number, any> = {}): this {
+    return this.#store(name, this.#r.f32(opts.littleEndian), opts);
   }
 
   /**
@@ -439,13 +460,11 @@ export class Packet<T extends object, U = object> {
    * @param opts Read options.
    * @returns This, for chaining.
    */
-  public f64(name: keyof T, opts?: NotTemp<number>): this;
-  public f64(name: keyof U, opts: HasTemp<number>): this;
-  public f64(
-    name: keyof T | keyof U,
-    opts: ReadOpts<number> = {temp: false}
-  ): this {
-    return this.#store(name, this.#r.f64(), opts);
+  public f64<V extends keyof T>(name: V, opts: NotTemp<number, T[V]>): this;
+  public f64<V extends keyof T>(name: MatchingType<T, V, number>): this;
+  public f64<V extends keyof U>(name: V, opts: HasTemp<number, U[V]>): this;
+  public f64(name: keyof T | keyof U, opts: ReadOpts<number, any> = {}): this {
+    return this.#store(name, this.#r.f64(opts.littleEndian), opts);
   }
 
   /**
@@ -457,23 +476,28 @@ export class Packet<T extends object, U = object> {
    * @param opts Read options.
    * @returns This, for chaining.
    */
-  public times(
-    name: keyof T,
+  public times<V extends keyof T>(
+    name: V,
     num: number,
     fn: (n: number) => FieldType,
-    opts?: NotTemp<FieldType[]>
+    opts: NotTemp<FieldType[], T[V]>
   ): this;
-  public times(
-    name: keyof U,
+  public times<V extends keyof T>(
+    name: MatchingType<T, V, FieldType[]>,
+    num: number,
+    fn: (n: number) => FieldType
+  ): this;
+  public times<V extends keyof U>(
+    name: V,
     num: number,
     fn: (n: number) => FieldType,
-    opts: HasTemp<FieldType[]>
+    opts: HasTemp<FieldType[], U[V]>
   ): this;
   public times(
     name: keyof T | keyof U,
     num: number,
     fn: (n: number) => FieldType,
-    opts: ReadOpts<FieldType[]> = {temp: false}
+    opts: ReadOpts<FieldType[], any> = {}
   ): this {
     return this.#store(name, this.#r.times(num, fn), opts);
   }
@@ -501,25 +525,31 @@ export class Packet<T extends object, U = object> {
    * @param read The value returned from this function is added to the array.
    * @param opts Read options.
    */
-  public while<V>(
-    name: keyof T,
+  public while<V extends keyof T, W extends FieldType>(
+    name: V,
     keepGoing: (iteration: number, r: DataViewReader) => boolean,
-    read: (iteration: number, r: DataViewReader) => V,
-    opts?: NotTemp<V[]>
+    read: (iteration: number, r: DataViewReader) => W,
+    opts?: NotTemp<W[], T[V]>
   ): this;
-  public while<V>(
-    name: keyof U,
+  public while<V extends keyof T, W extends FieldType>(
+    name: MatchingType<T, V, W[]>,
     keepGoing: (iteration: number, r: DataViewReader) => boolean,
-    read: (iteration: number, r: DataViewReader) => V,
-    opts: HasTemp<V[]>
+    read: (iteration: number, r: DataViewReader) => W,
+    opts: NotTemp<W[], T[V]>
   ): this;
-  public while<V>(
+  public while<V extends keyof U, W extends FieldType>(
+    name: V,
+    keepGoing: (iteration: number, r: DataViewReader) => boolean,
+    read: (iteration: number, r: DataViewReader) => W,
+    opts: HasTemp<W[], U[V]>
+  ): this;
+  public while<W extends FieldType>(
     name: keyof T | keyof U,
     keepGoing: (iteration: number, r: DataViewReader) => boolean,
-    read: (iteration: number, r: DataViewReader) => V,
-    opts: ReadOpts<V[]> = {temp: false}
+    read: (iteration: number, r: DataViewReader) => W,
+    opts: ReadOpts<W[], any> = {temp: false}
   ): this {
-    const res: V[] = [];
+    const res: W[] = [];
     let it = 0;
     while (!this.#r.truncated && keepGoing.call(this, it, this.#r)) {
       res.push(read.call(this, it++, this.#r));
@@ -536,32 +566,42 @@ export class Packet<T extends object, U = object> {
    *
    * @param desc Description of bits to capture.
    */
+  public bits<V extends keyof T, W extends keyof T>(desc: {
+    from: T[V] extends number | bigint | undefined ? V : never;
+    to: W;
+  } & BitsConfig<T[V], T[W]>): this;
+  public bits<V extends keyof U, W extends keyof T>(desc: {
+    fromTemp: U[V] extends number | bigint ? V : never;
+    to: W;
+  } & BitsConfig<U[V], T[W]>): this;
+  public bits<V extends keyof T, W extends keyof U>(desc: {
+    from: T[V] extends number | bigint ? V : never;
+    toTemp: W;
+  } & BitsConfig<T[V], U[W]>): this;
+  public bits<V extends keyof U, W extends keyof U>(desc: {
+    fromTemp: U[V] extends number | bigint ? V : never;
+    toTemp: W;
+  } & BitsConfig<U[V], U[W]>): this;
   public bits(desc: {
-    from: keyof T;
-    to: keyof T;
-  } & BitsConfig): this;
-  public bits(desc: {
-    fromTemp: keyof U;
-    to: keyof T;
-  } & BitsConfig): this;
-  public bits(desc: {
-    from: keyof T;
-    toTemp: keyof U;
-  } & BitsConfig): this;
-  public bits(desc: {
-    fromTemp: keyof U;
-    toTemp: keyof U;
-  } & BitsConfig): this;
-  public bits(
-    {from, to, fromTemp, toTemp, convert, ...startFinish}:
-    {
-      from: keyof T;
-      fromTemp: keyof U;
-      to: keyof T;
-      toTemp: keyof U;
-    } & BitsConfig
-  ): this {
-    const field = fromTemp ? this.#temp[fromTemp] : this.#packet[from];
+    from?: keyof T;
+    fromTemp?: keyof U;
+    to?: keyof T;
+    toTemp?: keyof U;
+    set?: {[flag: string]: number | bigint};
+    start?: number | bigint;
+    finish?: number | bigint;
+    convert?(value: number | bigint, name: string): any;
+  }): this {
+    const {from, to, fromTemp, toTemp, convert, ...startFinish} = desc;
+
+    let field: number | bigint | undefined = undefined;
+    if (fromTemp) {
+      field = this.#temp[fromTemp] as number | bigint;
+    } else if (from) {
+      field = this.#packet[from] as number | bigint;
+    } else {
+      throw new Error('Invalid from/fromTemp');
+    }
     if (this.#r.allowTruncation && (typeof field === 'undefined')) {
       return this;
     }
@@ -569,7 +609,7 @@ export class Packet<T extends object, U = object> {
 
     let val: boolean | number | bigint | Set<string> | undefined = undefined;
 
-    if ('set' in startFinish) {
+    if (startFinish.set) {
       val = new Set<string>();
       for (const [flag, start] of Object.entries(startFinish.set)) {
         // @ts-expect-error TS blows at generic maths.
@@ -579,6 +619,10 @@ export class Packet<T extends object, U = object> {
       }
     } else {
       let {start, finish} = startFinish;
+      assert(
+        typeof start === 'number' || typeof start === 'bigint',
+        'Invalid start'
+      );
       finish ??= start;
 
       // Start is the higher number.
@@ -596,13 +640,12 @@ export class Packet<T extends object, U = object> {
       val = (start === finish) ? Boolean(tmp) : tmp;
     }
 
+    assert(toTemp || to, 'Invalid to/toTemp');
     return this.#store(
-      toTemp ?? to,
+      (toTemp ?? to) as keyof T | keyof U,
+      // @ts-expect-error Might be a set, oh well, this is internal.
       val,
-      {
-        temp: Boolean(toTemp),
-        convert,
-      }
+      {temp: Boolean(toTemp), convert}
     );
   }
 
@@ -613,28 +656,32 @@ export class Packet<T extends object, U = object> {
    * @param val Any constant value.
    * @param opts Read options.
    */
-  public constant(
-    name: keyof T,
-    val: FieldType,
-    opts?: NotTemp<FieldType>
+  public constant<V extends keyof T, F extends FieldType>(
+    name: V,
+    val: F,
+    opts: NotTemp<F, T[V]>
   ): this;
-  public constant(
-    name: keyof U,
-    val: FieldType,
-    opts: HasTemp<FieldType>
+  public constant<V extends keyof T, F extends FieldType>(
+    name: MatchingType<T, V, F>,
+    val: F
+  ): this;
+  public constant<V extends keyof U, F extends FieldType>(
+    name: V,
+    val: F,
+    opts: HasTemp<F, U[V]>
   ): this;
   public constant(
     name: keyof T | keyof U,
     val: FieldType,
-    opts: ReadOpts<FieldType> = {temp: false}
+    opts: ReadOpts<FieldType, any> = {}
   ): this {
     return this.#store(name, val, opts);
   }
 
-  #store<V>(
+  #store<V extends FieldType>(
     name: keyof T | keyof U,
     value: V,
-    opts: ReadOpts<V>
+    opts: ReadOpts<V, any>
   ): this {
     if (!this.#r.truncated) {
       let res: unknown = value;

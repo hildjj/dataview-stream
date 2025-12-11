@@ -1,5 +1,8 @@
+.devcontainer/
+.pnpm-store/
+.vscode/
 coverage/
 docs/
 lib/
 node_modules/
-.vscode/
+test/__screenshots__/
