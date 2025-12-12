@@ -85,7 +85,7 @@ export class WritableSink implements UnderlyingSink<Uint8Array> {
     chunk: Uint8Array,
     controller: WritableStreamDefaultController
   ): void {
-    assert(!controller.signal.aborted, 'Unknown state.  Abort should have cancelled write.');
+    assert(!controller?.signal?.aborted, 'Unknown state.  Abort should have cancelled write.');
 
     // TODO (@hildjj): Think more about backpressure, since the HWM
     // doesn't seem to do much.  One approach would be to monitor length,
