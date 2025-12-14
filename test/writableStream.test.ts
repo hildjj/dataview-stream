@@ -24,6 +24,11 @@ describe('DataViewWritableStream', () => {
     assert.equal(n.length, 3);
   });
 
+  test('create w ArrayBuffer', () => {
+    const n = new DataViewWritableStream({input: TE.encode('foo').buffer});
+    assert.equal(n.length, 3);
+  });
+
   test('bad inputs', () => {
     assert.throws(() => new DataViewWritableStream({input: 1 as unknown as string}), /Unknown input type/);
   });

@@ -582,6 +582,9 @@ export class DataViewReader {
    * @throws {TruncationError} Invalid total number.
    */
   #check(add: number): number {
+    if (!Number.isSafeInteger(add) || add < 0) {
+      throw new Error(`Invalid read size: ${add}`);
+    }
     if (this.#truncated) {
       return NaN;
     }

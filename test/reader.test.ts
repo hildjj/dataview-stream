@@ -155,6 +155,13 @@ describe('reader', () => {
     });
   });
 
+  test('invalid size', () => {
+    const r = new DataViewReader(new Uint8Array(0));
+    assert.throws(() => r.skip(NaN));
+    assert.throws(() => r.skip(Infinity));
+    assert.throws(() => r.skip(-1));
+  });
+
   test('struct', () => {
     const buf = new Uint8Array([
       0x02, 0x61, 0x62, 0x03, 0x64, 0x65, 0x66, 0x67, 0x68,
