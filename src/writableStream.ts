@@ -16,7 +16,7 @@ export interface DataViewWritableStreamOptions {
    * If specified, start with these bytes enqueued.  Strings are encoded as
    * UTF-8.
    */
-  input?: Uint8Array | string;
+  input?: Uint8Array | ArrayBuffer | string;
 
   /**
    * Default endianness for the stream.

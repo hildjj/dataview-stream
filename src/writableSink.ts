@@ -10,7 +10,7 @@ interface Waiting {
 const TE = new TextEncoder();
 
 export interface SinkOptions {
-  input?: Uint8Array | string;
+  input?: Uint8Array | ArrayBuffer | string;
 }
 
 /**
@@ -28,7 +28,8 @@ export class WritableSink implements UnderlyingSink<Uint8Array> {
     if (opts.input) {
       if (typeof opts.input === 'string') {
         this.#push(TE.encode(opts.input));
-      } else if (opts.input instanceof Uint8Array) {
+      } else if ((opts.input instanceof Uint8Array) ||
+                 (opts.input instanceof ArrayBuffer)) {
         this.#push(opts.input);
       } else {
         throw new Error('Unknown input type');
@@ -184,7 +185,11 @@ export class WritableSink implements UnderlyingSink<Uint8Array> {
    *
    * @param buf Buffer recevied.
    */
-  #push(buf: Uint8Array): void {
+  #push(buf: Uint8Array | ArrayBuffer): void {
+    // Node.js 20 sends an ArrayBuffer.
+    if (!(buf instanceof Uint8Array)) {
+      buf = new Uint8Array(buf, 0, buf.byteLength);
+    }
     this.#q.push(buf);
     this.#len += buf.length;
     if (this.#waiting) {

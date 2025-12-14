@@ -21,7 +21,7 @@ export default defineConfig({
       {
         test: {
           name: 'browser',
-          include: ['test/*.test.ts'],
+          include: ['test/*.test.ts', '!test/node.test.ts'],
           browser: {
             provider: playwright(),
             enabled: true,
