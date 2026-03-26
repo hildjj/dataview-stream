@@ -114,7 +114,8 @@ describe('Packet', () => {
   });
 
   interface While {
-    while: number[];
+    while?: number[];
+    str?: string[];
   }
 
   test('while', () => {
@@ -123,6 +124,11 @@ describe('Packet', () => {
     p.while('while', () => p.left > 0, (_i, rd) => rd.u8());
     assert.deepEqual(p.packet, {while: [0x61, 0x62]});
     assert.equal(p.offset, 2);
+    p.reset().while('str', () => p.left > 0, (i, rd) => `str_${i}: ${rd.u8()}`);
+    assert.deepEqual(p.packet, {str: [
+      'str_0: 97',
+      'str_1: 98',
+    ]});
   });
 
   test('truncation', () => {
