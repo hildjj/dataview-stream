@@ -525,22 +525,18 @@ export class Packet<T extends object, U = object> {
    * @param read The value returned from this function is added to the array.
    * @param opts Read options.
    */
-  public while<V extends keyof T, W extends FieldType>(
+  public while<V extends keyof T>(
     name: V,
     keepGoing: (iteration: number, r: DataViewReader) => boolean,
-    read: (iteration: number, r: DataViewReader) => W,
-    opts?: NotTemp<W[], T[V]>
-  ): this;
-  public while<V extends keyof T, W extends FieldType>(
-    name: MatchingType<T, V, W[]>,
-    keepGoing: (iteration: number, r: DataViewReader) => boolean,
-    read: (iteration: number, r: DataViewReader) => W,
-    opts: NotTemp<W[], T[V]>
+    read: (iteration: number, r: DataViewReader) =>
+    T[V] extends (Iterable<infer E> | undefined) ? E : never,
+    opts?: EasyReadOpts
   ): this;
   public while<V extends keyof U, W extends FieldType>(
     name: V,
     keepGoing: (iteration: number, r: DataViewReader) => boolean,
-    read: (iteration: number, r: DataViewReader) => W,
+    read: (iteration: number, r: DataViewReader) =>
+    U[V] extends (Iterable<infer E> | undefined) ? E : never,
     opts: HasTemp<W[], U[V]>
   ): this;
   public while<W extends FieldType>(
