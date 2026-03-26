@@ -32,7 +32,8 @@
     "test:all": "NODE_OPTIONS=--experimental-json-modules vitest --run",
     "docs": "typedoc",
     "ts": "tsdown",
-    "build": "npm run ts && npm run test:all && npm run lint && npm run docs && npm pack --dry-run"
+    "build": "npm run ts && npm run test:all && npm run lint && npm run docs && npm pack --dry-run",
+    "pub":  "npm run ts && npm run test && npm run lint && npm run docs && npm pack --dry-run"
   },
   "dependencies": {
     "@cto.af/utils": "1.4.2"
@@ -41,18 +42,18 @@
     "@cto.af/eslint-config": "^6.2.5",
     "@eslint/markdown": "^7.5.1",
     "@types/node": "^25.5.0",
-    "@vitest/browser-playwright": "^4.1.0",
-    "@vitest/coverage-istanbul": "^4.1.0",
+    "@vitest/browser-playwright": "^4.1.2",
+    "@vitest/coverage-istanbul": "^4.1.2",
     "eslint": "^10.1.0",
-    "eslint-plugin-jsdoc": "^62.8.0",
+    "eslint-plugin-jsdoc": "^62.8.1",
     "playwright": "^1.58.2",
-    "tsdown": "^0.21.4",
-    "typedoc": "^0.28.17",
+    "tsdown": "^0.21.5",
+    "typedoc": "^0.28.18",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.57.1",
-    "vitest": "^4.1.0"
+    "typescript-eslint": "^8.57.2",
+    "vitest": "^4.1.2"
   },
-  "packageManager": "pnpm@10.32.1",
+  "packageManager": "pnpm@10.33.0",
   "engines": {
     "node": ">=20"
   }

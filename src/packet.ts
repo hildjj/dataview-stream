@@ -45,7 +45,7 @@ export interface EasyReadOpts {
   littleEndian?: boolean;
 }
 
-export type ConvertReadOpts<F extends FieldType, G> = G extends F ? {
+export type ConvertReadOpts<F extends FieldType, G> = [G] extends [F] ? {
   // Optional if G matches F.
   convert?(value: F, name: string, temp: boolean): G;
 } : {

@@ -8,6 +8,7 @@ interface Foo {
   bar: boolean;
   bop: number;
   blort: number;
+  conv?: number | string;
   bytes: Uint8Array;
   ascii: string;
   utf8?: string;
@@ -24,6 +25,8 @@ interface Temp {
   flags: number;
   bigFlags: bigint;
 }
+
+const CONV = new Map([[1, 'one']]);
 
 describe('Packet', () => {
   test('create', () => {
@@ -57,6 +60,8 @@ describe('Packet', () => {
       utf8: 'd',
       baz: new Uint8Array(0),
     });
+    p.reset().u8('conv', {convert: b => (CONV.get(b) ?? b)});
+    assert.equal(p.packet.conv, 'one');
     p.reset().u32('foo');
     assert.equal(p.packet.foo, 0x01020304);
     p.reset()
