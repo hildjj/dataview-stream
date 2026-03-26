@@ -1,6 +1,6 @@
 {
   "name": "dataview-stream",
-  "version": "2.0.3",
+  "version": "2.0.4",
   "decription": "",
   "main": "lib/index.mjs",
   "exports": {
@@ -33,7 +33,7 @@
     "docs": "typedoc",
     "ts": "tsdown",
     "build": "npm run ts && npm run test:all && npm run lint && npm run docs && npm pack --dry-run",
-    "pub":  "npm run ts && npm run test && npm run lint && npm run docs && npm pack --dry-run"
+    "pub": "npm run ts && npm run test && npm run lint && npm run docs && npm pack --dry-run"
   },
   "dependencies": {
     "@cto.af/utils": "1.4.2"
