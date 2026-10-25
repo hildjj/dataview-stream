@@ -16,6 +16,9 @@ export default defineConfig({
           name: 'node',
           globals: true,
           environment: 'node',
+          typecheck: {
+            enabled: true,
+          },
         },
       },
       {
