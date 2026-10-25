@@ -180,6 +180,7 @@ export class DataViewReader {
 
   /**
    * Set truncation mode.  May not turn it off, once it's on.
+   * @throws If already in trucation mode.
    */
   public set allowTruncation(val: boolean) {
     if (!val) {
@@ -199,6 +200,7 @@ export class DataViewReader {
   /**
    * Allowed to be set from outside the class if some higher layer wants to
    * stop all further reads.  May only be set to true.
+   * @throws If val is false.
    */
   public set truncated(val: boolean) {
     if (!val) {
